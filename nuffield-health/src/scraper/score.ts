@@ -11,6 +11,7 @@ export interface ScoreInput {
   treatments: string[];
   qualifications_credentials: string | null;
   specialty_primary: string[];
+  specialty_sub: string[];
   insurers: string[];
   consultation_times_raw: string[];
   plain_english_score: number | null;
@@ -49,8 +50,9 @@ function isNonProcedural(specialties: string[]): boolean {
 export function scoreConsultant(data: ScoreInput): ScoreResult {
   let score = 0;
   const flags: Flag[] = [];
+  const specialtyEvidence = [...data.specialty_primary, ...data.specialty_sub];
 
-  const specialtyWaiver = isNonProcedural(data.specialty_primary);
+  const specialtyWaiver = isNonProcedural(specialtyEvidence);
 
   // --- Score calculation ---
 
@@ -86,8 +88,8 @@ export function scoreConsultant(data: ScoreInput): ScoreResult {
     addFlag(flags, "CONTENT_NO_QUALIFICATIONS", "fail", "No qualifications listed");
   }
 
-  // specialty_primary: 10 points
-  if (data.specialty_primary.length > 0) {
+  // specialty evidence (primary or sub-specialty): 10 points
+  if (specialtyEvidence.length > 0) {
     score += SCORE_WEIGHTS.specialty_primary_non_empty;
   }
 
@@ -153,7 +155,7 @@ export function scoreConsultant(data: ScoreInput): ScoreResult {
   // Check tiers from Gold down; any fail flag blocks Gold
   const hasPhoto = data.has_photo === true;
   const hasBioSubstantive = data.bio_depth === "substantive";
-  const hasSpecialty = data.specialty_primary.length > 0;
+  const hasSpecialty = specialtyEvidence.length > 0;
 
   // Gold: score >= 80, has_photo, bio_depth=substantive, specialty non-empty, no fail flags
   if (

@@ -59,4 +59,31 @@ export interface ConsultantFilters {
   search?: string;
   page?: number;
   per_page?: number;
+  bio_depth?: BioDepth;
+  has_photo?: boolean;
+  has_fail_flags?: boolean;
+  has_warn_flags?: boolean;
+  score_min?: number;
+  score_max?: number;
+  sort_by?: string;
+  sort_dir?: "asc" | "desc";
+}
+
+// Score dimension definition for recomputing breakdown
+export interface ScoreDimension {
+  key: string;
+  label: string;
+  maxPoints: number;
+  earned: number;
+}
+
+// Filter counts for sidebar badges
+export interface FilterCounts {
+  tiers: Record<string, number>;
+  booking_states: Record<string, number>;
+  hospitals: { name: string; count: number }[];
+  specialties: { name: string; count: number }[];
+  bio_depths: Record<string, number>;
+  photo: { has: number; missing: number };
+  flags: { fail: number; warn: number };
 }

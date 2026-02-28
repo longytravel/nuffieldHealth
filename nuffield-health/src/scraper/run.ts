@@ -228,7 +228,7 @@ async function runBookingStage(
   gmcCodeForBooking: string | null,
   onlineBookable: boolean,
   progress: { current: number; total: number }
-): Promise<{ booking_state: BookingState; available_days_next_28_days: number; available_slots_next_28_days: number; avg_slots_per_day: number | null; next_available_date: string | null; days_to_first_available: number | null; consultation_price: string | null }> {
+): Promise<{ booking_state: BookingState; available_days_next_28_days: number; available_slots_next_28_days: number; avg_slots_per_day: number | null; next_available_date: string | null; days_to_first_available: number | null; consultation_price: number | null }> {
   // Default: not bookable
   const defaultResult = {
     booking_state: "not_bookable" as BookingState,
@@ -237,7 +237,7 @@ async function runBookingStage(
     avg_slots_per_day: null as number | null,
     next_available_date: null as string | null,
     days_to_first_available: null as number | null,
-    consultation_price: null as string | null,
+    consultation_price: null as number | null,
   };
 
   if (!gmcCodeForBooking || !onlineBookable) {
@@ -315,9 +315,15 @@ async function runAssessStage(
     }
     upsertConsultant(runId, slug, {
       plain_english_score: assessment.plain_english_score,
+      plain_english_reason: assessment.plain_english_reason,
       bio_depth: assessment.bio_depth,
+      bio_depth_reason: assessment.bio_depth_reason,
       treatment_specificity_score: assessment.treatment_specificity_score,
+      treatment_specificity_reason: assessment.treatment_specificity_reason,
+      qualifications_completeness: assessment.qualifications_completeness,
+      qualifications_completeness_reason: assessment.qualifications_completeness_reason,
       declaration_substantive: assessment.declaration_substantive,
+      ai_quality_notes: assessment.overall_quality_notes,
       scrape_status: "assess_done",
     });
 
@@ -345,6 +351,11 @@ async function runAssessStage(
     if (assessment.personal_interests && !parsed.personal_interests) {
       upsertConsultant(runId, slug, {
         personal_interests: assessment.personal_interests,
+      });
+    }
+    if (assessment.professional_interests) {
+      upsertConsultant(runId, slug, {
+        professional_interests: assessment.professional_interests,
       });
     }
     if (assessment.inferred_sub_specialties.length > 0) {
@@ -376,8 +387,11 @@ async function runAssessStage(
       bio_depth_reason: "AI assessment failed — heuristic fallback",
       treatment_specificity_score: "not_applicable" as const,
       treatment_specificity_reason: "AI assessment failed",
+      qualifications_completeness: "missing" as const,
+      qualifications_completeness_reason: "AI assessment failed",
       inferred_sub_specialties: [],
       personal_interests: null,
+      professional_interests: null,
       clinical_interests: [],
       languages: [],
       declaration_substantive: false,
@@ -391,16 +405,24 @@ function runScoreStage(
   slug: string,
   parsed: ReturnType<typeof parseProfile>,
   bookingResult: { booking_state: BookingState; available_slots_next_28_days: number },
-  assessment: { plain_english_score: number; bio_depth: string },
+  assessment: { plain_english_score: number; bio_depth: string; inferred_sub_specialties?: string[] },
   progress: { current: number; total: number }
 ): void {
   try {
+    const mergedSpecialtySub = [
+      ...parsed.specialty_sub,
+      ...(assessment.inferred_sub_specialties ?? []).filter(
+        (s) => !parsed.specialty_sub.some((p) => p.toLowerCase() === s.toLowerCase())
+      ),
+    ];
+
     const scoreInput = {
       has_photo: parsed.has_photo,
       bio_depth: assessment.bio_depth as "substantive" | "adequate" | "thin" | "missing" | null,
       treatments: parsed.treatments,
       qualifications_credentials: parsed.qualifications_credentials,
       specialty_primary: parsed.specialty_primary,
+      specialty_sub: mergedSpecialtySub,
       insurers: parsed.insurers,
       consultation_times_raw: parsed.consultation_times_raw,
       plain_english_score: assessment.plain_english_score,
@@ -641,7 +663,7 @@ async function main(): Promise<void> {
           avg_slots_per_day: null as number | null,
           next_available_date: null as string | null,
           days_to_first_available: null as number | null,
-          consultation_price: null as string | null,
+          consultation_price: null as number | null,
         };
 
         if (!shouldSkipStage(currentStatus, "booking_done")) {

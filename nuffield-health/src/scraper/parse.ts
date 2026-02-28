@@ -98,6 +98,12 @@ const AGE_MIN_REGEX = /(?:ages?\s+(?:of\s+)?(?:over|above)|(?:over|above)\s+(?:t
 const NUFFIELD_AT_NHS_REGEX = /nuffield\s+health\s+at\s+/i;
 const NUFFIELD_REGEX = /nuffield/i;
 
+// BUG-015: Iframe/noscript rendering artifacts to strip from free-text fields
+const RENDERING_ARTIFACTS = [
+  "Browser doesn't support frames",
+  "Browser does not support frames",
+];
+
 // Declaration boilerplate patterns (case-insensitive)
 const DECLARATION_BOILERPLATE_PATTERNS = [
   "no interests to declare",
@@ -163,9 +169,14 @@ export function parseProfile(html: string, slug: string): ParseResult {
   confidence.specialty_primary = specialtyPrimary.length > 0 ? "high" : "medium";
   confidence.specialty_sub = specialtySub.length > 0 ? "high" : "medium";
 
-  // Treatments: merge from all treatment sections
-  const treatments = extractListItems($, sections, HeadingCategory.TREATMENTS);
-  confidence.treatments = treatments.length > 0 ? "high" : "medium";
+  const specialInterests = extractListItems($, sections, HeadingCategory.SPECIAL_INTERESTS);
+
+  // Treatments: prefer explicit treatment sections; fallback to Special interests
+  // because many consultant pages publish condition/procedure lists there instead.
+  const treatmentSectionItems = extractListItems($, sections, HeadingCategory.TREATMENTS);
+  const treatments =
+    treatmentSectionItems.length > 0 ? treatmentSectionItems : specialInterests;
+  confidence.treatments = treatmentSectionItems.length > 0 ? "high" : "medium";
 
   // Qualifications
   const qualifications = extractTextContent($, sections, HeadingCategory.QUALIFICATIONS);
@@ -192,7 +203,7 @@ export function parseProfile(html: string, slug: string): ParseResult {
 
   // Interest sections
   const clinicalInterests = [
-    ...extractListItems($, sections, HeadingCategory.SPECIAL_INTERESTS),
+    ...specialInterests,
     ...extractListItems($, sections, HeadingCategory.OTHER_INTERESTS),
   ];
   confidence.clinical_interests = clinicalInterests.length > 0 ? "high" : "medium";
@@ -286,9 +297,9 @@ export function parseProfile(html: string, slug: string): ParseResult {
     hospital_is_nuffield: hospital.isNuffield,
     hospital_nuffield_at_nhs: hospital.nuffieldAtNhs,
     booking_state: bookingState,
-    about_text: aboutText,
-    related_experience_text: relatedExperience,
-    overview_text: overviewText,
+    about_text: stripRenderingArtifacts(aboutText),
+    related_experience_text: stripRenderingArtifacts(relatedExperience),
+    overview_text: stripRenderingArtifacts(overviewText),
     cms_corruption_detected: cmsCorruptionDetected,
     confidence,
   };
@@ -1079,9 +1090,11 @@ function extractHospitalInfo(
     }
   }
 
-  // Fallback: look for hospital name in page metadata or structured elements
+  // Fallback: look for hospital name in specific display elements only.
+  // BUG-016: Do NOT use broad [class*='hospital'] — it matches form containers
+  // like contact-us__intro--hospitals, capturing CTA text as hospital name.
   if (!hospitalName) {
-    const hospitalEl = $(".consultant__hospital, .hospital-name, [class*='hospital']").first();
+    const hospitalEl = $(".consultant__hospital, .hospital-name").first();
     if (hospitalEl.length > 0) {
       hospitalName = hospitalEl.text().trim() || null;
     }
@@ -1106,6 +1119,20 @@ function extractHospitalInfo(
   }
 
   return { name: hospitalName, code: hospitalCode, isNuffield, nuffieldAtNhs };
+}
+
+/**
+ * BUG-015: Strip known rendering artifacts (iframe noscript fallback text)
+ * from free-text fields before persistence and AI input.
+ */
+export function stripRenderingArtifacts(text: string | null): string | null {
+  if (!text) return text;
+  let cleaned = text;
+  for (const artifact of RENDERING_ARTIFACTS) {
+    cleaned = cleaned.replaceAll(artifact, "");
+  }
+  cleaned = cleaned.trim();
+  return cleaned.length > 0 ? cleaned : null;
 }
 
 /**

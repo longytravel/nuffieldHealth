@@ -1,6 +1,7 @@
 import { getLatestRun, getFlaggedConsultants } from "@/db/queries";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
+import { PageTransition } from "@/components/ui/page-transition";
 import { ReviewActions } from "./review-actions";
 
 const SEVERITY_STYLES: Record<string, string> = {
@@ -25,12 +26,41 @@ export default async function ReviewQueuePage() {
 
   const flaggedConsultants = await getFlaggedConsultants(run.run_id);
 
+  function getQueueReasons(c: (typeof flaggedConsultants)[number]): string[] {
+    const reasons: string[] = [];
+    const hasFail = c.flags.some((flag) => flag.severity === "fail");
+    const hasLowConfidence = c.flags.some((flag) => flag.code === "QA_LOW_CONFIDENCE");
+
+    if (c.quality_tier === "Incomplete") {
+      reasons.push("Incomplete tier");
+    }
+    if (hasFail) {
+      reasons.push("Fail-severity flag");
+    }
+    if (hasLowConfidence) {
+      reasons.push("Low-confidence extraction");
+    }
+
+    return reasons;
+  }
+
+  function getTierTooltip(c: (typeof flaggedConsultants)[number]): string {
+    if (c.quality_tier === "Incomplete") {
+      return "Incomplete means score < 40, or mandatory tier gates are not met (for example missing specialty evidence), or 2+ fail flags.";
+    }
+    return "Tier is based on score plus mandatory field gates.";
+  }
+
   return (
-    <div className="space-y-6">
+    <PageTransition className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Review Queue</h1>
         <p className="text-muted-foreground">
           {flaggedConsultants.length} profiles need review
+        </p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Includes profiles that are Incomplete, have fail-severity flags, or
+          contain low-confidence extractions.
         </p>
       </div>
 
@@ -48,7 +78,7 @@ export default async function ReviewQueuePage() {
           </Link>
         </div>
       ) : (
-        <div className="rounded-md border">
+        <div className="overflow-x-auto rounded-md border">
           <table className="w-full">
             <thead>
               <tr className="border-b bg-muted/50">
@@ -81,6 +111,18 @@ export default async function ReviewQueuePage() {
                         {c.hospital_name_primary}
                       </p>
                     )}
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {getQueueReasons(c).map((reason) => (
+                        <Badge
+                          key={reason}
+                          variant="secondary"
+                          className="text-[10px]"
+                          title={`Queue reason: ${reason}`}
+                        >
+                          {reason}
+                        </Badge>
+                      ))}
+                    </div>
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap gap-1">
@@ -89,13 +131,14 @@ export default async function ReviewQueuePage() {
                           key={i}
                           variant="secondary"
                           className={`text-xs ${SEVERITY_STYLES[flag.severity] ?? ""}`}
+                          title={`${flag.code}: ${flag.message}`}
                         >
                           {flag.code}
                         </Badge>
                       ))}
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-sm">
+                  <td className="px-4 py-3 text-sm" title={getTierTooltip(c)}>
                     {c.quality_tier ?? "-"} /{" "}
                     {c.profile_completeness_score != null
                       ? Math.round(c.profile_completeness_score)
@@ -110,6 +153,6 @@ export default async function ReviewQueuePage() {
           </table>
         </div>
       )}
-    </div>
+    </PageTransition>
   );
 }

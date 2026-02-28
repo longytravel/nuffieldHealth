@@ -73,7 +73,7 @@ export const consultantSchema = z.object({
   available_slots_next_28_days: z.number().int().nullable(),
   next_available_date: z.string().nullable(),
   days_to_first_available: z.number().int().nullable(),
-  consultation_price: z.string().nullable(),
+  consultation_price: z.number().nullable(),
 
   // 3.4 Aggregate Fields
   profile_completeness_score: z.number().min(0).max(100).nullable(),

@@ -1,9 +1,13 @@
 # Quick Tech Spec: Nuffield Health Consultant Profile Quality Scraper
-**Version:** 1.7
+**Version:** 1.9
 **Date:** 2026-02-28
 **Owner:** ROG (CEO initiative)
-**Status:** QA Phase 1 complete — validated against 58 live profiles (pre-build) + 40 live scrapes (QA Phase 1: 30-profile cohort + 10 random spot-checks). 14 bugs found and fixed (BUG-001 through BUG-014). 161 unit tests passing. Entering QA Phase 2 (200-profile stress test).
+**Status:** QA Phase 2 complete — 200-profile deterministic stress test passed (200/200, 0 errors, 0 parse failures). 15 bugs found and fixed (BUG-001 through BUG-015). 174 unit tests passing. AI assessment validated against 4 live profiles (manual). Next: QA Phase 3 — 200-profile AI-enabled run to validate §3.5 evidence fields at scale, then spot-check 10-15 profiles for reviewer agreement.
 
+> **v1.9 changes:** 200-profile deterministic stress test completed — 200/200 profiles, 0 errors, 0 parse failures. Booking metrics validated at scale: 58.5% bookable with slots, 14.5% bookable no slots, 26.5% not bookable; 95% of bookable consultants have `next_available_date` (range 3–69 days out). Quality tier distribution: 62.5% Gold, 26.5% Silver, 6.5% Bronze, 4.0% Incomplete. Test count confirmed at 174 (13 added in v1.8). Validation plan updated: Phase 2 (deterministic stress test) marked complete; Phase 3 defined as AI-enabled 200-profile run to populate §3.5 fields, followed by 10-15 profile spot-check for reviewer agreement on AI assessments.
+>
+> **v1.8 changes:** AI assessment validation (4 live profiles). Expanded Haiku prompt contract (§5) with full field definitions, scoring guides, and two new fields: `qualifications_completeness` (enum + reason) and `professional_interests` (string). Added 6 new AI reason/evidence columns to schema (§3.5) for stakeholder reporting — AI reasons are now persisted, not discarded. BUG-015 filed: "Browser doesn't support frames" text leaking into `about_text`. Parser must strip iframe noscript artifacts before persistence and before AI assessment.
+>
 > **v1.7 changes:** Formalized three booking fields already implemented but not previously in spec (`available_days_next_28_days`, `avg_slots_per_day`, `days_to_first_available`). Extended `clinicdays` API span from 28 to 90 days for `next_available_date` discovery — 28-day metrics remain the primary reporting view, extended availability is supplementary context. `days_to_first_available` computed field added for stakeholder reporting. QA Phase 1 completed: 40 profiles scraped successfully, 14 bugs identified and fixed across parsing, booking aggregation, scoring, and flag generation.
 >
 > **v1.6 changes:** Round 6 validation (10 new random profiles). New findings: "Miss" and "Ms" title prefixes confirmed — name parser must handle Mr/Mrs/Ms/Miss/Dr/Professor; cosmetic-specific treatment H3 variant with hospital name embedded in heading; Declaration section can contain substantive financial disclosures (e.g. equipment ownership through partnerships), not just boilerplate; "Nuffield Health at [NHS hospital]" naming pattern exists (Nuffield facility inside NHS hospital); patient age restrictions can be ranges (e.g. "0-18" for paediatric-only) and can contradict special interests; "Overview" can appear as a nav tab/button rather than an H2 heading — parser must distinguish; "View more" expandable content can truncate locations; 0300 non-geographic phone numbers exist.
@@ -98,6 +102,20 @@ Primary objective: produce a management report where every reported point can be
 - `hospital_is_nuffield` (boolean, false when consultant's primary location is an external/NHS hospital)
 - `hospital_nuffield_at_nhs` (boolean, true when hospital uses "Nuffield Health at [NHS hospital]" naming pattern)
 - `declaration_substantive` (boolean, true when declaration contains actual financial interests/ownership, not just "no interests" boilerplate)
+- `professional_interests` (string|null, AI-assessed — professional activities like teaching, research leadership, committee roles distinct from clinical interests and personal hobbies)
+
+### 3.5 AI Assessment Evidence Fields
+
+These fields are produced by the Haiku AI assessor (Layer 2) and **must be persisted** in the database for stakeholder reporting, QA review, and audit trail. They are the evidence behind the AI-derived scores.
+
+- `plain_english_reason` (string|null): AI explanation for `plain_english_score` — e.g. "Mixed approach with medical terminology (MRCP, TAVI) alongside accessible language"
+- `bio_depth_reason` (string|null): AI explanation for `bio_depth` — e.g. "Detailed background including education, training timeline, fellowship awards"
+- `treatment_specificity_reason` (string|null): AI explanation for `treatment_specificity_score`
+- `qualifications_completeness` (`comprehensive` | `adequate` | `minimal` | `missing`, AI): how complete the qualifications/credentials section is
+- `qualifications_completeness_reason` (string|null): AI explanation for `qualifications_completeness`
+- `ai_quality_notes` (string|null): free-text AI observations — anomalies, typos, rendering artifacts, quality recommendations. Displayed in dashboard detail view and used by QA reviewers.
+
+When AI assessment fails or is skipped (`--skip-assess`), all §3.5 fields are `null`. This is a valid state — scoring falls back to heuristic `bio_depth` and sets `plain_english_score` to 1.
 
 ### 3.3 Booking Fields
 
@@ -206,19 +224,88 @@ Use heading and pattern classification, not fixed DOM positions:
 
 ## 5. Haiku Prompt Contract
 
-Single JSON output per profile:
-- plain English score + reason
-- bio depth + reason
-- treatment specificity + reason
-- qualifications completeness + reason
-- inferred sub-specialties
-- personal interests
-- clinical interests
-- professional interests
-- languages
-- overall quality notes
+**Model:** `claude-haiku-4-5-20251001`
+**Calls per profile:** 1
+**Max tokens:** 1024
+**Estimated cost:** ~$0.0003/profile (~$1-2 for full 3,800-profile run)
 
-Use strict JSON schema validation on response before persistence.
+### 5.1 Input
+
+Assembled from parsed profile data — sent as the user message:
+
+```
+Name: {consultant_name}
+Specialties: {specialty_primary joined}
+About: {about_text}
+Overview: {overview_text}
+Related Experience: {related_experience_text}
+Treatments: {treatments joined}
+Qualifications: {qualifications_credentials}
+Declaration: {declaration paragraphs joined}
+Clinical Interests: {clinical_interests joined}
+```
+
+Each section is only included if the parsed value is non-null/non-empty. Parser MUST strip rendering artifacts (e.g. "Browser doesn't support frames") from text fields **before** assembling input — see BUG-015.
+
+### 5.2 Output Schema
+
+Single JSON object per profile. Validated with Zod before persistence. On validation failure, retry once; on second failure, return null assessment defaults (pipeline never crashes).
+
+| Field | Type | Description |
+|---|---|---|
+| `plain_english_score` | integer 1-5 | Patient readability of profile text |
+| `plain_english_reason` | string | Brief explanation for score |
+| `bio_depth` | enum: `substantive` / `adequate` / `thin` / `missing` | Depth and quality of the About/bio section |
+| `bio_depth_reason` | string | Brief explanation for assessment |
+| `treatment_specificity_score` | enum: `highly_specific` / `moderately_specific` / `generic` / `not_applicable` | How specifically treatments/procedures are named |
+| `treatment_specificity_reason` | string | Brief explanation for assessment |
+| `qualifications_completeness` | enum: `comprehensive` / `adequate` / `minimal` / `missing` | Completeness of qualifications, credentials, training history |
+| `qualifications_completeness_reason` | string | Brief explanation for assessment |
+| `inferred_sub_specialties` | string[] | Sub-specialties implied by the full profile (beyond explicit headings) |
+| `personal_interests` | string or null | Personal hobbies/non-clinical interests if mentioned in bio |
+| `professional_interests` | string or null | Professional activities — teaching, research leadership, committee roles, course organisation. Distinct from clinical interests (which are medical conditions/procedures) and personal interests (hobbies). |
+| `clinical_interests` | string[] | Clinical conditions/procedures of interest extracted from free text |
+| `languages` | string[] | Languages mentioned anywhere in profile |
+| `declaration_substantive` | boolean | `true` if declaration mentions actual financial interests, equipment ownership, partnerships, investments; `false` if boilerplate "no interests" or absent |
+| `overall_quality_notes` | string | Free-text summary: anomalies, typos, artifacts, quality observations, actionable recommendations |
+
+### 5.3 Scoring Guides (included in system prompt)
+
+- **plain_english_score:** 1=jargon-heavy/unreadable, 2=mostly medical language, 3=mixed, 4=mostly plain English, 5=fully accessible to patients
+- **bio_depth:** `substantive`=detailed background with experience/approach/philosophy, `adequate`=reasonable but brief, `thin`=minimal/sparse, `missing`=no bio/about section
+- **treatment_specificity:** `highly_specific`=named procedures/conditions, `moderately_specific`=broad categories with some detail, `generic`=vague/general terms only, `not_applicable`=no treatments section
+- **qualifications_completeness:** `comprehensive`=multiple qualifications, training institutions named, fellowships/awards listed, `adequate`=basic qualifications present with some detail, `minimal`=bare minimum (degree only), `missing`=no qualifications section
+- **declaration_substantive:** `true` if declaration mentions actual financial interests, equipment ownership, partnerships, or investments; `false` if "no interests to declare" boilerplate or absent
+- **professional vs personal vs clinical interests:** clinical = medical conditions, procedures, surgical techniques; professional = teaching, research, committee work, editorial roles, course organisation; personal = hobbies, sport, family, non-work activities
+
+### 5.4 Persistence
+
+All fields from §5.2 MUST be persisted to the database (schema §3.2 and §3.5). The pipeline currently discards reason fields — this must be fixed. Specifically:
+
+| AI Output Field | DB Column | Section |
+|---|---|---|
+| `plain_english_score` | `plain_english_score` | §3.2 |
+| `plain_english_reason` | `plain_english_reason` | §3.5 |
+| `bio_depth` | `bio_depth` | §3.2 |
+| `bio_depth_reason` | `bio_depth_reason` | §3.5 |
+| `treatment_specificity_score` | `treatment_specificity_score` | §3.2 |
+| `treatment_specificity_reason` | `treatment_specificity_reason` | §3.5 |
+| `qualifications_completeness` | `qualifications_completeness` | §3.5 |
+| `qualifications_completeness_reason` | `qualifications_completeness_reason` | §3.5 |
+| `inferred_sub_specialties` | merged into `specialty_sub` | §3.2 |
+| `personal_interests` | `personal_interests` (if parser null) | §3.2 |
+| `professional_interests` | `professional_interests` | §3.2 |
+| `clinical_interests` | merged into `clinical_interests` | §3.2 |
+| `languages` | merged into `languages` | §3.2 |
+| `declaration_substantive` | `declaration_substantive` | §3.2 |
+| `overall_quality_notes` | `ai_quality_notes` | §3.5 |
+
+### 5.5 Validation
+
+- Strict Zod schema validation on every Haiku response before persistence
+- On validation failure: retry once with same input
+- On second failure: set all §3.5 fields to `null`, use heuristic `bio_depth` fallback, set `plain_english_score` to 1
+- Pipeline never crashes from AI assessment failure
 
 ---
 
@@ -261,8 +348,10 @@ Crawl behavior:
 ### Build validation phases
 1. ~~Single-profile perfection~~ — Complete
 2. ~~30-profile ground truth cohort + 10 random spot-checks~~ — Complete (14 bugs found/fixed, 161 unit tests)
-3. 200-profile stress test — **In progress**
-4. Full run
+3. ~~200-profile deterministic stress test~~ — Complete (200/200, 0 errors, 0 parse failures, 174 unit tests)
+4. ~~AI assessment validation (4 profiles, manual)~~ — Complete (see `test-results/ai-assessment-validation.md`)
+5. AI-enabled 200-profile run + spot-check 10-15 profiles for reviewer agreement — **Next**
+6. Full run (all ~3,800 profiles, both layers enabled)
 
 Targets:
 - Deterministic fields >= 99% accuracy
@@ -275,9 +364,10 @@ Targets:
 - Quality tier distribution
 - Filter by hospital, specialty, flag, bookability
 - Drilldown by consultant with field-by-field evidence
+- AI assessment evidence panel: display `plain_english_reason`, `bio_depth_reason`, `treatment_specificity_reason`, `qualifications_completeness_reason`, and `ai_quality_notes` on the consultant detail view — stakeholders need to see *why* a profile scored the way it did, not just the number
 - Direct live profile links
 - Availability/next date/slots views
-- CSV/PDF export
+- CSV/PDF export (AI reason fields included in CSV export)
 
 ---
 
@@ -297,6 +387,9 @@ All former open questions have been resolved in `architecture.md`. Cross-referen
 | 8 | Treatment/consultation-time normalisation | Phase 2 deferred; raw arrays captured verbatim now | architecture.md §Deferred Decisions |
 | 9 | Enquiry-form taxonomy for non-bookable profiles | Out of scope for MVP; `booking_state: not_bookable` is the signal | architecture.md §Deferred Decisions |
 | 10 | Extended availability window | `clinicdays` span extended from 28→90 days; 28-day metrics remain primary for reporting; `next_available_date` and `days_to_first_available` use full 90-day window as supplementary context | quick-spec §3.3, §4.3 |
+| 11 | AI assessment evidence persistence | All Haiku reason/explanation fields persisted to DB (previously discarded). New §3.5 schema section. Stakeholders need *why*, not just scores. | quick-spec §3.5, §5.4 |
+| 12 | Qualifications completeness + professional interests | Added to Haiku prompt contract per original spec §5 requirement. `qualifications_completeness` (enum + reason) and `professional_interests` (string) were specified but not implemented. | quick-spec §5.2 |
+| 13 | Deterministic layer validated at scale | 200-profile stress test: 0 errors, 0 parse failures. Booking validated (58.5% with slots, 95% have next_available_date). Tier distribution: 62.5% Gold, 26.5% Silver, 6.5% Bronze, 4% Incomplete. Deterministic layer ready for full run. | quick-spec §8 |
 
 ---
 

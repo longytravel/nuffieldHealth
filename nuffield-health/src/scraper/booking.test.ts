@@ -125,7 +125,7 @@ describe("fetchBookingData", () => {
     expect(result.available_slots_next_28_days).toBe(3); // 2 + 1
     expect(result.avg_slots_per_day).toBe(1.5); // 3 / 2
     expect(result.next_available_date).toBe("2026-03-03"); // earliest
-    expect(result.consultation_price).toBe("200");
+    expect(result.consultation_price).toBe(200);
     expect(result.booking_state).toBe("bookable_with_slots");
   });
 

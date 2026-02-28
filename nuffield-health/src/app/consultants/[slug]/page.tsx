@@ -3,22 +3,20 @@ import Link from "next/link";
 import { headers } from "next/headers";
 import { appendFileSync, mkdirSync } from "fs";
 import { dirname } from "path";
-import { getLatestRun, getConsultant } from "@/db/queries";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-
-const TIER_STYLES: Record<string, string> = {
-  Gold: "bg-amber-100 text-amber-800",
-  Silver: "bg-slate-100 text-slate-700",
-  Bronze: "bg-orange-100 text-orange-800",
-  Incomplete: "bg-red-100 text-red-700",
-};
-
-const SEVERITY_STYLES: Record<string, string> = {
-  fail: "bg-red-100 text-red-800",
-  warn: "bg-yellow-100 text-yellow-800",
-  info: "bg-blue-100 text-blue-800",
-};
+import { getLatestRun, getConsultant, getSpecialtyAverageScore } from "@/db/queries";
+import { GlassCard } from "@/components/ui/glass-card";
+import { TierBadge } from "@/components/ui/tier-badge";
+import { ScoreGauge } from "@/components/ui/score-gauge";
+import { PageTransition } from "@/components/ui/page-transition";
+import { computeScoreBreakdown } from "./compute-score";
+import { ProfileTabs } from "./profile-tabs";
+import {
+  ChevronRight,
+  ExternalLink,
+  MapPin,
+  Award,
+  CalendarDays,
+} from "lucide-react";
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -33,8 +31,19 @@ function auditLog(slug: string, ip: string) {
       `${new Date().toISOString()}\tdetail_view\t${slug}\t${ip}\n`
     );
   } catch {
-    // Non-blocking — audit log failure should not break the page
+    // Non-blocking -- audit log failure should not break the page
   }
+}
+
+function formatRegistrationNumber(regNum: string | null): { label: string; value: string } | null {
+  if (!regNum) return null;
+  if (regNum.startsWith("HCPC-")) {
+    return { label: "HCPC Registration", value: regNum };
+  }
+  if (/^\d+$/.test(regNum)) {
+    return { label: "Registration Number", value: regNum };
+  }
+  return { label: "Registration Number", value: regNum };
 }
 
 export default async function ConsultantDetailPage({ params }: PageProps) {
@@ -51,7 +60,7 @@ export default async function ConsultantDetailPage({ params }: PageProps) {
     notFound();
   }
 
-  // Audit logging
+  // Audit logging (preserved from original)
   const headersList = await headers();
   const ip =
     headersList.get("x-forwarded-for")?.split(",")[0]?.trim() ??
@@ -60,443 +69,157 @@ export default async function ConsultantDetailPage({ params }: PageProps) {
   auditLog(slug, ip);
 
   const c = consultant;
+  const scoreDimensions = computeScoreBreakdown(c);
+  const regInfo = formatRegistrationNumber(c.registration_number);
+
+  // Get specialty average for comparison
+  const primarySpecialty = c.specialty_primary.length > 0 ? c.specialty_primary[0] : null;
+  const specialtyAvg = primarySpecialty
+    ? await getSpecialtyAverageScore(run.run_id, primarySpecialty)
+    : null;
+
+  const bookingLabel =
+    c.booking_state === "bookable_with_slots"
+      ? "Bookable"
+      : c.booking_state === "bookable_no_slots"
+      ? "No Slots"
+      : "Not Bookable";
+
+  const bookingColor =
+    c.booking_state === "bookable_with_slots"
+      ? "var(--success)"
+      : c.booking_state === "bookable_no_slots"
+      ? "var(--warning)"
+      : "var(--text-muted)";
 
   return (
-    <div className="space-y-8">
-      {/* Header */}
-      <div className="flex items-start justify-between">
-        <div>
-          <Link
-            href="/consultants"
-            className="mb-2 inline-block text-sm text-muted-foreground hover:text-foreground"
-          >
-            &larr; Back to consultants
-          </Link>
-          <h1 className="text-3xl font-bold tracking-tight">
-            {c.consultant_title_prefix ? `${c.consultant_title_prefix} ` : ""}
-            {c.consultant_name ?? c.slug}
-          </h1>
-          <div className="mt-1 flex flex-wrap gap-2 text-sm text-muted-foreground">
+    <PageTransition className="space-y-8">
+      {/* Breadcrumbs */}
+      <nav className="flex items-center gap-1.5 text-sm text-[var(--text-muted)]">
+        <Link href="/" className="hover:text-[var(--text-primary)] transition-colors">
+          Dashboard
+        </Link>
+        <ChevronRight className="h-3.5 w-3.5" />
+        <Link href="/consultants" className="hover:text-[var(--text-primary)] transition-colors">
+          Consultants
+        </Link>
+        <ChevronRight className="h-3.5 w-3.5" />
+        <span className="text-[var(--text-primary)] font-medium">
+          {c.consultant_name ?? c.slug}
+        </span>
+      </nav>
+
+      {/* Hero Section */}
+      <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+        {/* Left: Photo + Info */}
+        <div className="flex items-start gap-5">
+          {/* Photo placeholder */}
+          <div className={`h-20 w-20 shrink-0 rounded-2xl flex items-center justify-center text-2xl font-bold ${
+            c.has_photo
+              ? "bg-[var(--sensai-teal)]/15 text-[var(--sensai-teal)]"
+              : "bg-[var(--bg-elevated)] text-[var(--text-muted)]"
+          }`}>
+            {(c.consultant_name ?? c.slug).charAt(0).toUpperCase()}
+          </div>
+          <div>
+            <h1 className="text-h1 text-[var(--text-primary)]">
+              {c.consultant_title_prefix && !c.consultant_name?.startsWith(c.consultant_title_prefix)
+                ? `${c.consultant_title_prefix} `
+                : ""}
+              {c.consultant_name ?? c.slug}
+            </h1>
+            <div className="mt-2 flex flex-wrap items-center gap-3 text-sm text-[var(--text-secondary)]">
+              {c.hospital_name_primary && (
+                <span className="flex items-center gap-1.5">
+                  <MapPin className="h-3.5 w-3.5" />
+                  {c.hospital_name_primary}
+                </span>
+              )}
+              {regInfo && (
+                <span className="flex items-center gap-1.5">
+                  <Award className="h-3.5 w-3.5" />
+                  {regInfo.label}: {regInfo.value}
+                </span>
+              )}
+              {c.practising_since && (
+                <span className="flex items-center gap-1.5">
+                  <CalendarDays className="h-3.5 w-3.5" />
+                  Practising since {c.practising_since}
+                </span>
+              )}
+            </div>
             {c.specialty_primary.length > 0 && (
-              <span>{c.specialty_primary.join(", ")}</span>
-            )}
-            {c.hospital_name_primary && (
-              <>
-                <span>at</span>
-                <span>{c.hospital_name_primary}</span>
-              </>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {c.specialty_primary.map((s, i) => (
+                  <span
+                    key={i}
+                    className="rounded-full bg-[var(--sensai-teal)]/15 px-2.5 py-0.5 text-xs font-medium text-[var(--sensai-teal)]"
+                  >
+                    {s}
+                  </span>
+                ))}
+              </div>
             )}
           </div>
         </div>
+
+        {/* Right: Action Button */}
         <a
           href={`https://www.nuffieldhealth.com/consultants/${slug}`}
           target="_blank"
           rel="noopener noreferrer"
-          className="rounded-md border px-4 py-2 text-sm font-medium hover:bg-accent"
+          className="inline-flex items-center gap-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-glass)] px-4 py-2.5 text-sm font-medium text-[var(--text-primary)] hover:border-[var(--border-hover)] hover:shadow-[0_0_20px_rgba(6,182,212,0.08)] transition-all"
         >
+          <ExternalLink className="h-4 w-4" />
           View Live Profile
         </a>
       </div>
 
-      {/* Quality Card */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Quality Assessment</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center gap-4">
-            {c.quality_tier && (
-              <Badge
-                className={`text-base px-3 py-1 ${TIER_STYLES[c.quality_tier] ?? ""}`}
-              >
-                {c.quality_tier}
-              </Badge>
-            )}
-            {c.profile_completeness_score != null && (
-              <div className="flex-1">
-                <div className="mb-1 flex justify-between text-sm">
-                  <span>Completeness Score</span>
-                  <span className="font-medium">
-                    {Math.round(c.profile_completeness_score)}/100
-                  </span>
-                </div>
-                <div className="h-2 w-full rounded-full bg-muted">
-                  <div
-                    className="h-2 rounded-full bg-primary"
-                    style={{
-                      width: `${Math.min(100, c.profile_completeness_score)}%`,
-                    }}
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-
-          {c.flags.length > 0 && (
-            <div>
-              <p className="mb-2 text-sm font-medium">Flags</p>
-              <div className="flex flex-wrap gap-2">
-                {c.flags.map((flag, i) => (
-                  <Badge
-                    key={i}
-                    variant="secondary"
-                    className={SEVERITY_STYLES[flag.severity] ?? ""}
-                  >
-                    {flag.code}: {flag.message}
-                  </Badge>
-                ))}
-              </div>
-            </div>
+      {/* Stat Cards */}
+      <div className="grid gap-4 grid-cols-3">
+        {/* Tier Card */}
+        <GlassCard className="flex flex-col items-center justify-center py-6">
+          <p className="text-caption text-[var(--text-muted)] mb-2">Quality Tier</p>
+          {c.quality_tier ? (
+            <TierBadge
+              tier={c.quality_tier.toLowerCase() as "gold" | "silver" | "bronze" | "incomplete"}
+              className="text-sm px-3 py-1"
+            />
+          ) : (
+            <span className="text-sm text-[var(--text-muted)]">Not Assessed</span>
           )}
-        </CardContent>
-      </Card>
+        </GlassCard>
 
-      <div className="grid gap-6 md:grid-cols-2">
-        {/* About / Bio */}
-        {c.bio_depth && (
-          <Card>
-            <CardHeader>
-              <CardTitle>About</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm">
-                <span className="font-medium">Bio Depth:</span>{" "}
-                <Badge variant="outline">{c.bio_depth}</Badge>
-              </p>
-            </CardContent>
-          </Card>
-        )}
+        {/* Score Gauge */}
+        <GlassCard className="flex flex-col items-center justify-center py-4">
+          <p className="text-caption text-[var(--text-muted)] mb-2">Profile Score</p>
+          {c.profile_completeness_score != null ? (
+            <ScoreGauge score={Math.round(c.profile_completeness_score)} size="md" />
+          ) : (
+            <span className="text-sm text-[var(--text-muted)]">N/A</span>
+          )}
+        </GlassCard>
 
-        {/* Treatments */}
-        {c.treatments.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Treatments ({c.treatments.length})</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ul className="list-disc space-y-1 pl-4 text-sm">
-                {c.treatments.map((t, i) => (
-                  <li key={i}>{t}</li>
-                ))}
-              </ul>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Qualifications */}
-        {c.qualifications_credentials && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Qualifications</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm">{c.qualifications_credentials}</p>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Insurers */}
-        {c.insurers.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle>
-                Insurers ({c.insurer_count ?? c.insurers.length})
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-wrap gap-1">
-                {c.insurers.map((ins, i) => (
-                  <Badge key={i} variant="outline" className="text-xs">
-                    {ins}
-                  </Badge>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Consultation Times */}
-        {c.consultation_times_raw.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Consultation Times</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ul className="space-y-1 text-sm">
-                {c.consultation_times_raw.map((t, i) => (
-                  <li key={i}>{t}</li>
-                ))}
-              </ul>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Booking Info */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Booking Information</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm">
-            <div className="grid grid-cols-2 gap-2">
-              <span className="text-muted-foreground">Booking State</span>
-              <span className="font-medium">{c.booking_state ?? "-"}</span>
-              <span className="text-muted-foreground">Online Bookable</span>
-              <span className="font-medium">{c.online_bookable ? "Yes" : "No"}</span>
-              <span className="text-muted-foreground">Slots (next 28 days)</span>
-              <span className="font-medium">
-                {c.available_slots_next_28_days ?? "-"}
-              </span>
-              <span className="text-muted-foreground">Next Available</span>
-              <span className="font-medium">{c.next_available_date ?? "-"}</span>
-              <span className="text-muted-foreground">Price</span>
-              <span className="font-medium">
-                {c.consultation_price ? `£${c.consultation_price}` : "-"}
-              </span>
-            </div>
-            {c.booking_caveat && (
-              <p className="mt-2 text-xs text-muted-foreground italic">
-                {c.booking_caveat}
-              </p>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* AI Assessment */}
-        <Card>
-          <CardHeader>
-            <CardTitle>AI Assessment</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm">
-            <div className="grid grid-cols-2 gap-2">
-              <span className="text-muted-foreground">Plain English Score</span>
-              <span className="font-medium">
-                {c.plain_english_score != null ? `${c.plain_english_score}/5` : "-"}
-              </span>
-              <span className="text-muted-foreground">Bio Depth</span>
-              <span className="font-medium">{c.bio_depth ?? "-"}</span>
-              <span className="text-muted-foreground">Treatment Specificity</span>
-              <span className="font-medium">
-                {c.treatment_specificity_score ?? "-"}
-              </span>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Contact Information */}
-        {(c.contact_phone || c.contact_mobile || c.contact_email) && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Contact Information</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2 text-sm">
-              <p className="mb-2 text-xs text-muted-foreground italic">
-                Sensitive data - access logged for audit purposes
-              </p>
-              <div className="grid grid-cols-2 gap-2">
-                {c.contact_phone && (
-                  <>
-                    <span className="text-muted-foreground">Phone</span>
-                    <span className="font-medium">{c.contact_phone}</span>
-                  </>
-                )}
-                {c.contact_mobile && (
-                  <>
-                    <span className="text-muted-foreground">Mobile</span>
-                    <span className="font-medium">{c.contact_mobile}</span>
-                  </>
-                )}
-                {c.contact_email && (
-                  <>
-                    <span className="text-muted-foreground">Email</span>
-                    <span className="font-medium">{c.contact_email}</span>
-                  </>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Declaration */}
-        {c.declaration && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                Declaration
-                {c.declaration_substantive && (
-                  <Badge variant="secondary" className="bg-amber-100 text-amber-800">
-                    Substantive
-                  </Badge>
-                )}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {(c.declaration as string[]).map((para, i) => (
-                <p key={i} className="mb-2 text-sm">
-                  {para}
-                </p>
-              ))}
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Memberships */}
-        {c.memberships.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Memberships</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ul className="list-disc space-y-1 pl-4 text-sm">
-                {c.memberships.map((m, i) => (
-                  <li key={i}>{m}</li>
-                ))}
-              </ul>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Languages */}
-        {c.languages.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Languages</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-wrap gap-2">
-                {c.languages.map((lang, i) => (
-                  <Badge key={i} variant="outline">
-                    {lang}
-                  </Badge>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Clinical Interests */}
-        {c.clinical_interests.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Clinical Interests</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ul className="list-disc space-y-1 pl-4 text-sm">
-                {c.clinical_interests.map((interest, i) => (
-                  <li key={i}>{interest}</li>
-                ))}
-              </ul>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Personal Interests */}
-        {c.personal_interests && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Personal Interests</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm">{c.personal_interests}</p>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Professional Roles */}
-        {c.professional_roles && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Professional Roles</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm">{c.professional_roles}</p>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Age Restriction */}
-        {c.patient_age_restriction && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Patient Age Restriction</CardTitle>
-            </CardHeader>
-            <CardContent className="text-sm">
-              <p>{c.patient_age_restriction}</p>
-              {(c.patient_age_restriction_min != null ||
-                c.patient_age_restriction_max != null) && (
-                <p className="mt-1 text-muted-foreground">
-                  Range: {c.patient_age_restriction_min ?? "0"} -{" "}
-                  {c.patient_age_restriction_max ?? "no limit"}
-                </p>
-              )}
-            </CardContent>
-          </Card>
-        )}
-
-        {/* External Website */}
-        {c.external_website && (
-          <Card>
-            <CardHeader>
-              <CardTitle>External Website</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <a
-                href={c.external_website}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-sm text-primary underline"
-              >
-                {c.external_website}
-              </a>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* CQC Rating */}
-        {c.cqc_rating && (
-          <Card>
-            <CardHeader>
-              <CardTitle>CQC Rating</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Badge variant="outline" className="text-sm">
-                {c.cqc_rating}
-              </Badge>
-            </CardContent>
-          </Card>
-        )}
+        {/* Booking Status */}
+        <GlassCard className="flex flex-col items-center justify-center py-6">
+          <p className="text-caption text-[var(--text-muted)] mb-2">Booking Status</p>
+          <span className="text-sm font-medium" style={{ color: bookingColor }}>
+            {bookingLabel}
+          </span>
+          {c.available_slots_next_28_days != null && c.available_slots_next_28_days > 0 && (
+            <span className="mt-1 text-xs text-[var(--text-muted)]">
+              {c.available_slots_next_28_days} slots available
+            </span>
+          )}
+        </GlassCard>
       </div>
 
-      {/* Raw Data (Collapsible) */}
-      <details className="rounded-lg border">
-        <summary className="cursor-pointer px-6 py-4 text-sm font-medium">
-          Raw Extracted Data (Audit)
-        </summary>
-        <div className="border-t px-6 py-4">
-          <pre className="overflow-auto rounded-md bg-muted p-4 text-xs">
-            {JSON.stringify(c, null, 2)}
-          </pre>
-        </div>
-      </details>
-
-      {/* Metadata */}
-      <div className="text-xs text-muted-foreground">
-        <p>Slug: {c.slug}</p>
-        <p>Registration Number: {c.registration_number ?? "N/A"}</p>
-        <p>Profile Status: {c.profile_status}</p>
-        <p>Scrape Status: {c.scrape_status}</p>
-        {c.has_photo != null && <p>Has Photo: {c.has_photo ? "Yes" : "No"}</p>}
-        {c.hospital_is_nuffield != null && (
-          <p>Nuffield Hospital: {c.hospital_is_nuffield ? "Yes" : "No"}</p>
-        )}
-        {c.hospital_nuffield_at_nhs != null && (
-          <p>
-            Nuffield at NHS: {c.hospital_nuffield_at_nhs ? "Yes" : "No"}
-          </p>
-        )}
-        <p>
-          Practising Since: {c.practising_since ?? "N/A"}
-        </p>
-      </div>
-    </div>
+      {/* Tabs */}
+      <ProfileTabs
+        consultant={c}
+        scoreDimensions={scoreDimensions}
+        specialtyAvg={specialtyAvg}
+      />
+    </PageTransition>
   );
 }

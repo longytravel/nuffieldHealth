@@ -61,3 +61,51 @@ Re-scraped `professor-stephen-mcdonnell` — all 7 fields verified correct. Qual
 
 - `src/scraper/parse.ts` — BUG-013 (prefer itemprop="telephone" over tel: links), BUG-014 (PHONE_REGEX handles 3-digit area codes)
 - `src/scraper/parse.test.ts` — 4 new regression tests (161 total)
+
+### Bug Fixes (QA Phase 2 — 12-profile live spot-check)
+
+1 bug discovered from QA team spot-checking 12 random profiles against live pages. Fixed and verified.
+
+| Bug | Severity | Summary | Impact |
+|-----|----------|---------|--------|
+| BUG-016 | Medium | Hospital name captures form CTA text on profiles with no location section | Profiles with no hospital assignment get "Ask a question about this consultant..." as hospital name |
+
+### Schema Fix
+
+| Change | Summary |
+|--------|---------|
+| consultation_price type | Changed from `text` to `real` across full chain (schema, booking.ts, run.ts, validators.ts) for numeric aggregation (AVG, MIN, MAX) |
+
+### Files Changed
+
+- `src/scraper/parse.ts` — BUG-016 (remove broad `[class*='hospital']` from fallback selector)
+- `src/scraper/parse.test.ts` — 3 new regression tests (BUG-016: no location section, broad selector, location present with form)
+- `src/db/schema.ts` — consultation_price: text → real
+- `src/scraper/booking.ts` — consultation_price: string → number throughout
+- `src/scraper/run.ts` — consultation_price type annotations updated
+- `src/lib/validators.ts` — consultation_price: z.string() → z.number()
+- `src/scraper/booking.test.ts` — price expectation: "200" → 200
+- Test count: 174 → 177 (3 new tests)
+
+### AI Assessment Evidence & Quality Improvements (Quick Spec v1.8)
+
+Implements spec §3.5 (AI Assessment Evidence Fields), expanded §5 (Haiku Prompt Contract), and BUG-015 fix.
+
+| Change | Summary |
+|--------|---------|
+| BUG-015 | "Browser doesn't support frames" iframe artifact stripped from about_text, overview_text, related_experience_text |
+| Evidence persistence | All AI reason fields now persisted: plain_english_reason, bio_depth_reason, treatment_specificity_reason, qualifications_completeness_reason, ai_quality_notes |
+| New field: qualifications_completeness | Enum (comprehensive/adequate/minimal/missing) — AI-assessed, persisted to DB |
+| New field: professional_interests | Nullable string — AI-extracted, persisted to DB |
+| Schema migration | 7 new columns added to consultants table |
+
+### Files Changed
+
+- `src/db/schema.ts` — 7 new columns (§3.5 evidence fields + professional_interests)
+- `src/scraper/assess.ts` — Zod schema expanded, NULL_ASSESSMENT updated, system prompt updated
+- `src/scraper/run.ts` — persist all reason fields + professional_interests + ai_quality_notes
+- `src/scraper/parse.ts` — BUG-015 (stripRenderingArtifacts for iframe noscript artifacts)
+- `src/scraper/assess.test.ts` — 5 new tests (qualifications_completeness, professional_interests, NULL_ASSESSMENT validation)
+- `src/scraper/parse.test.ts` — 8 new regression tests (stripRenderingArtifacts + parseProfile integration)
+- `drizzle/0001_yummy_martin_li.sql` — migration file (10 ALTER TABLE ADD COLUMN)
+- Test count: 161 → 174 (13 new tests)

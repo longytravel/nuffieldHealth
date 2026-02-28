@@ -19,8 +19,11 @@ export const assessmentResponseSchema = z.object({
     "not_applicable",
   ]),
   treatment_specificity_reason: z.string(),
+  qualifications_completeness: z.enum(["comprehensive", "adequate", "minimal", "missing"]),
+  qualifications_completeness_reason: z.string(),
   inferred_sub_specialties: z.array(z.string()),
   personal_interests: z.string().nullable(),
+  professional_interests: z.string().nullable(),
   clinical_interests: z.array(z.string()),
   languages: z.array(z.string()),
   declaration_substantive: z.boolean(),
@@ -37,8 +40,11 @@ export const NULL_ASSESSMENT: AssessmentResponse = {
   bio_depth_reason: "AI assessment failed",
   treatment_specificity_score: "not_applicable",
   treatment_specificity_reason: "AI assessment failed",
+  qualifications_completeness: "missing",
+  qualifications_completeness_reason: "AI assessment failed",
   inferred_sub_specialties: [],
   personal_interests: null,
+  professional_interests: null,
   clinical_interests: [],
   languages: [],
   declaration_substantive: false,
@@ -56,19 +62,24 @@ You MUST respond with a valid JSON object matching this exact schema — no mark
   "bio_depth_reason": "<brief explanation>",
   "treatment_specificity_score": "<highly_specific|moderately_specific|generic|not_applicable>",
   "treatment_specificity_reason": "<brief explanation>",
+  "qualifications_completeness": "<comprehensive|adequate|minimal|missing>",
+  "qualifications_completeness_reason": "<brief explanation>",
   "inferred_sub_specialties": ["<string>", ...],
-  "personal_interests": "<string or null>",
+  "personal_interests": "<string or null — hobbies, sport, non-work activities>",
+  "professional_interests": "<string or null — teaching, research leadership, committee roles, course organisation>",
   "clinical_interests": ["<string>", ...],
   "languages": ["<string>", ...],
   "declaration_substantive": <true if declaration contains actual financial interests/ownership, false if boilerplate or missing>,
-  "overall_quality_notes": "<brief overall assessment>"
+  "overall_quality_notes": "<brief overall assessment including any anomalies, typos, or artifacts detected>"
 }
 
 Scoring guide:
 - plain_english_score: 1=jargon-heavy/unreadable, 2=mostly medical language, 3=mixed, 4=mostly plain English, 5=fully accessible to patients
 - bio_depth: "substantive"=detailed background with experience/approach, "adequate"=reasonable but brief, "thin"=minimal/sparse, "missing"=no bio/about section
 - treatment_specificity: "highly_specific"=named procedures/conditions, "moderately_specific"=broad categories with some detail, "generic"=vague/general terms only, "not_applicable"=no treatments section
-- declaration_substantive: true if the declaration section mentions actual financial interests, equipment ownership, partnerships, or investments; false if it says "no interests to declare" or similar boilerplate, or if there is no declaration section`;
+- qualifications_completeness: "comprehensive"=multiple qualifications, training institutions named, fellowships/awards listed; "adequate"=basic qualifications with some detail; "minimal"=bare minimum (degree only); "missing"=no qualifications section
+- declaration_substantive: true if the declaration section mentions actual financial interests, equipment ownership, partnerships, or investments; false if it says "no interests to declare" or similar boilerplate, or if there is no declaration section
+- Interest classification: clinical=medical conditions, procedures, surgical techniques; professional=teaching, research, committee work, editorial roles, course organisation; personal=hobbies, sport, family, non-work activities`;
 
 let client: Anthropic | null = null;
 

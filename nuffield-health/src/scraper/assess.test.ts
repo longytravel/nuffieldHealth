@@ -33,8 +33,11 @@ function makeValidResponse() {
     bio_depth_reason: "Detailed background",
     treatment_specificity_score: "highly_specific",
     treatment_specificity_reason: "Named procedures",
+    qualifications_completeness: "comprehensive",
+    qualifications_completeness_reason: "Multiple qualifications and fellowships",
     inferred_sub_specialties: ["Joint replacement"],
     personal_interests: "Golf",
+    professional_interests: "Medical education, course organisation",
     clinical_interests: ["Knee surgery"],
     languages: ["English", "French"],
     declaration_substantive: false,
@@ -85,10 +88,46 @@ describe("assessmentResponseSchema", () => {
     expect(result.success).toBe(true);
   });
 
+  it("should accept null professional_interests", () => {
+    const valid = { ...makeValidResponse(), professional_interests: null };
+    const result = assessmentResponseSchema.safeParse(valid);
+    expect(result.success).toBe(true);
+  });
+
+  it("should reject invalid qualifications_completeness value", () => {
+    const invalid = { ...makeValidResponse(), qualifications_completeness: "excellent" };
+    const result = assessmentResponseSchema.safeParse(invalid);
+    expect(result.success).toBe(false);
+  });
+
+  it("should accept all valid qualifications_completeness values", () => {
+    for (const value of ["comprehensive", "adequate", "minimal", "missing"]) {
+      const valid = { ...makeValidResponse(), qualifications_completeness: value };
+      const result = assessmentResponseSchema.safeParse(valid);
+      expect(result.success).toBe(true);
+    }
+  });
+
   it("should reject missing required fields", () => {
     const invalid = { plain_english_score: 4 };
     const result = assessmentResponseSchema.safeParse(invalid);
     expect(result.success).toBe(false);
+  });
+});
+
+describe("NULL_ASSESSMENT", () => {
+  it("should contain all required fields", () => {
+    const result = assessmentResponseSchema.safeParse(NULL_ASSESSMENT);
+    expect(result.success).toBe(true);
+  });
+
+  it("should have fallback values for new evidence fields", () => {
+    expect(NULL_ASSESSMENT.qualifications_completeness).toBe("missing");
+    expect(NULL_ASSESSMENT.qualifications_completeness_reason).toBe("AI assessment failed");
+    expect(NULL_ASSESSMENT.professional_interests).toBeNull();
+    expect(NULL_ASSESSMENT.plain_english_reason).toBe("AI assessment failed");
+    expect(NULL_ASSESSMENT.bio_depth_reason).toBe("AI assessment failed");
+    expect(NULL_ASSESSMENT.treatment_specificity_reason).toBe("AI assessment failed");
   });
 });
 

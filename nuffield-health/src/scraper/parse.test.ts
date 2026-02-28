@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseProfile, normalisePhone, heuristicBioDepth } from "./parse";
+import { parseProfile, normalisePhone, heuristicBioDepth, stripRenderingArtifacts } from "./parse";
 import { classifyHeading, HeadingCategory, extractPractisingYear } from "./headings";
 
 // ── Heading classification tests ──────────────────────────────────────────────
@@ -963,6 +963,43 @@ describe("parseProfile — Sparse profile with only 5 headings", () => {
   });
 });
 
+describe("parseProfile — Treatments fallback", () => {
+  it("uses Special interests as treatments when treatments section is absent", () => {
+    const html = buildProfileHTML({
+      h1: "Dr Abdullah Shehu",
+      gmcNumber: "3628735",
+      photo: true,
+      bookingIframe: true,
+      headingSections: [
+        {
+          tag: "h2",
+          text: "Specialties",
+          content: "<ul><li>Neurology</li></ul>",
+        },
+        {
+          tag: "h2",
+          text: "Special interests",
+          content:
+            "<ul><li>Multiple sclerosis</li><li>Parkinson's Disease</li><li>General Neurology</li></ul>",
+        },
+      ],
+    });
+
+    const result = parseProfile(html, "dr-abdullah-shehu");
+
+    expect(result.treatments).toEqual([
+      "Multiple sclerosis",
+      "Parkinson's Disease",
+      "General Neurology",
+    ]);
+    expect(result.clinical_interests).toEqual([
+      "Multiple sclerosis",
+      "Parkinson's Disease",
+      "General Neurology",
+    ]);
+  });
+});
+
 describe("parseProfile — record shape consistency", () => {
   it("all fields are present on every result, never undefined", () => {
     const html = buildProfileHTML({});
@@ -1500,5 +1537,119 @@ describe("BUG-012: CQC rating extraction", () => {
     `;
     const result = parseProfile(html, "test");
     expect(result.cqc_rating).toBe("Requires improvement");
+  });
+});
+
+// ── BUG-015: stripRenderingArtifacts ────────────────────────────────────────
+
+describe("stripRenderingArtifacts", () => {
+  it("strips 'Browser doesn't support frames' from text", () => {
+    const input = "Some about text. Browser doesn't support frames";
+    expect(stripRenderingArtifacts(input)).toBe("Some about text.");
+  });
+
+  it("strips 'Browser does not support frames' variant", () => {
+    const input = "Bio text here Browser does not support frames";
+    expect(stripRenderingArtifacts(input)).toBe("Bio text here");
+  });
+
+  it("returns null for artifact-only text", () => {
+    expect(stripRenderingArtifacts("Browser doesn't support frames")).toBeNull();
+  });
+
+  it("returns null for null input", () => {
+    expect(stripRenderingArtifacts(null)).toBeNull();
+  });
+
+  it("passes through clean text unchanged", () => {
+    const clean = "Mr Test is a consultant orthopaedic surgeon.";
+    expect(stripRenderingArtifacts(clean)).toBe(clean);
+  });
+
+  it("strips multiple occurrences", () => {
+    const input = "Browser doesn't support frames Start text Browser doesn't support frames end";
+    expect(stripRenderingArtifacts(input)).toBe("Start text  end");
+  });
+});
+
+describe("BUG-015: parseProfile strips iframe artifacts", () => {
+  it("strips iframe noscript artifact from about_text", () => {
+    const html = `
+      <!DOCTYPE html><html><body>
+        <h1>Mr Test</h1>
+        <aside class="consultant__image"><img src="https://img.test/photo.jpg" /></aside>
+        <h2>About</h2>
+        <p>Mr Test is a leading consultant. Browser doesn't support frames</p>
+      </body></html>
+    `;
+    const result = parseProfile(html, "test");
+    expect(result.about_text).toBe("Mr Test is a leading consultant.");
+    expect(result.about_text).not.toContain("Browser");
+  });
+
+  it("returns null about_text when only artifact is present", () => {
+    const html = `
+      <!DOCTYPE html><html><body>
+        <h1>Mr Test</h1>
+        <aside class="consultant__image"><img src="https://img.test/photo.jpg" /></aside>
+        <h2>About</h2>
+        <p>Browser doesn't support frames</p>
+      </body></html>
+    `;
+    const result = parseProfile(html, "test");
+    expect(result.about_text).toBeNull();
+  });
+});
+
+// ── BUG-016: Hospital name must not capture form CTA text ────────────────────
+
+describe("BUG-016: hospital_name_primary with no location section", () => {
+  it("returns null hospital when no location section exists", () => {
+    const html = `
+      <!DOCTYPE html><html><body>
+        <h1>Mr Test</h1>
+        <aside class="consultant__image"><img src="https://img.test/photo.jpg" /></aside>
+        <h2>About</h2>
+        <p>Mr Test is a consultant.</p>
+        <h2>Ask a question about this consultant</h2>
+        <div class="contact-us__intro contact-us__intro--hospitals">
+          <p>Fill in the form below</p>
+        </div>
+      </body></html>
+    `;
+    const result = parseProfile(html, "test");
+    expect(result.hospital_name_primary).toBeNull();
+    expect(result.hospital_code_primary).toBeNull();
+  });
+
+  it("does not match broad [class*=hospital] selectors in form elements", () => {
+    const html = `
+      <!DOCTYPE html><html><body>
+        <h1>Mr Test</h1>
+        <aside class="consultant__image"><img src="https://img.test/photo.jpg" /></aside>
+        <span class="radiology-hospital-name"></span>
+        <span class="cancellation-hospital-name"></span>
+        <h2>About</h2>
+        <p>Mr Test is a consultant.</p>
+      </body></html>
+    `;
+    const result = parseProfile(html, "test");
+    expect(result.hospital_name_primary).toBeNull();
+  });
+
+  it("still extracts hospital from location section when present", () => {
+    const html = `<html><body>
+      <h1>Mr Test</h1>
+      <aside class="consultant__image"><img src="https://img.test/photo.jpg" /></aside>
+      <h2>Locations Mr Test works with</h2>
+      <div><h3>Cambridge</h3><a href="/hospitals/cambridge">Cambridge</a><p>4 Trumpington Road</p></div>
+      <h2>Ask a question about this consultant</h2>
+      <div class="contact-us__intro contact-us__intro--hospitals">
+        <p>Fill in the form below</p>
+      </div>
+    </body></html>`;
+    const result = parseProfile(html, "test");
+    expect(result.hospital_name_primary).toBe("Cambridge");
+    expect(result.hospital_code_primary).toBe("cambridge");
   });
 });

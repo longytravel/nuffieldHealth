@@ -73,6 +73,17 @@ export const consultants = sqliteTable(
     hospital_is_nuffield: integer("hospital_is_nuffield", { mode: "boolean" }),
     hospital_nuffield_at_nhs: integer("hospital_nuffield_at_nhs", { mode: "boolean" }),
     declaration_substantive: integer("declaration_substantive", { mode: "boolean" }),
+    professional_interests: text("professional_interests"),
+
+    // 3.5 AI Assessment Evidence Fields
+    plain_english_reason: text("plain_english_reason"),
+    bio_depth_reason: text("bio_depth_reason"),
+    treatment_specificity_reason: text("treatment_specificity_reason"),
+    qualifications_completeness: text("qualifications_completeness", {
+      enum: ["comprehensive", "adequate", "minimal", "missing"],
+    }),
+    qualifications_completeness_reason: text("qualifications_completeness_reason"),
+    ai_quality_notes: text("ai_quality_notes"),
 
     // 3.3 Booking Fields
     booking_state: text("booking_state", {
@@ -84,7 +95,7 @@ export const consultants = sqliteTable(
     avg_slots_per_day: real("avg_slots_per_day"),
     next_available_date: text("next_available_date"),
     days_to_first_available: integer("days_to_first_available"),
-    consultation_price: text("consultation_price"),
+    consultation_price: real("consultation_price"),
 
     // 3.4 Aggregate Fields
     profile_completeness_score: real("profile_completeness_score"),

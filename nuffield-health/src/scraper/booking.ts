@@ -25,7 +25,7 @@ export interface BookingResult {
   avg_slots_per_day: number | null;
   next_available_date: string | null;
   days_to_first_available: number | null;
-  consultation_price: string | null;
+  consultation_price: number | null;
   booking_state: "not_bookable" | "bookable_no_slots" | "bookable_with_slots";
 }
 
@@ -251,7 +251,7 @@ export async function fetchBookingData(
   const availableDays = datesWithSlots28.size;
 
   // Extract pricing
-  let consultationPrice: string | null = null;
+  let consultationPrice: number | null = null;
   if (pricingResult.status !== 404 && pricingResult.data) {
     const pricingData = pricingResult.data;
     if (Array.isArray(pricingData) && pricingData.length > 0) {
@@ -260,9 +260,9 @@ export async function fetchBookingData(
         if (entry && typeof entry === "object") {
           const price = (entry as Record<string, unknown>).price as number | string | undefined;
           if (price !== undefined && price !== null) {
-            const priceStr = String(price);
-            if (!consultationPrice || parseFloat(priceStr) < parseFloat(consultationPrice)) {
-              consultationPrice = priceStr;
+            const numPrice = typeof price === "number" ? price : parseFloat(String(price));
+            if (!isNaN(numPrice) && (consultationPrice === null || numPrice < consultationPrice)) {
+              consultationPrice = numPrice;
             }
           }
         }
@@ -270,7 +270,10 @@ export async function fetchBookingData(
     } else if (typeof pricingData === "object" && pricingData !== null) {
       const price = (pricingData as Record<string, unknown>).price as number | string | undefined;
       if (price !== undefined && price !== null) {
-        consultationPrice = String(price);
+        const numPrice = typeof price === "number" ? price : parseFloat(String(price));
+        if (!isNaN(numPrice)) {
+          consultationPrice = numPrice;
+        }
       }
     }
   }

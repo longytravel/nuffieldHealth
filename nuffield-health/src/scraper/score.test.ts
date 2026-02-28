@@ -9,6 +9,7 @@ function makeInput(overrides: Partial<ScoreInput> = {}): ScoreInput {
     treatments: ["Treatment A", "Treatment B"],
     qualifications_credentials: "MBBS, FRCS",
     specialty_primary: ["General Surgery"],
+    specialty_sub: [],
     insurers: ["Bupa", "AXA"],
     consultation_times_raw: ["Mon 9-5"],
     plain_english_score: 4,
@@ -31,6 +32,17 @@ describe("scoreConsultant", () => {
     expect(result.profile_completeness_score).toBe(100);
     expect(result.quality_tier).toBe("Gold");
     expect(result.flags.filter((f) => f.severity === "fail")).toHaveLength(0);
+  });
+
+  it("should treat sub-specialties as valid specialty evidence for scoring and tier gates", () => {
+    const input = makeInput({
+      specialty_primary: [],
+      specialty_sub: ["Spinal Surgery"],
+    });
+    const result = scoreConsultant(input);
+
+    expect(result.profile_completeness_score).toBe(100);
+    expect(result.quality_tier).toBe("Gold");
   });
 
   it("should assign Gold tier at exactly score 80 with all mandatory fields", () => {
@@ -346,9 +358,10 @@ describe("scoreConsultant", () => {
   });
 
   // --- Mandatory field gates ---
-  it("should assign Incomplete when specialty_primary is empty regardless of score", () => {
+  it("should assign Incomplete when both specialty_primary and specialty_sub are empty regardless of score", () => {
     const input = makeInput({
       specialty_primary: [],
+      specialty_sub: [],
     });
     // Score: 10+15+10+10+0+8+7+10+10+5+5 = 90
     const result = scoreConsultant(input);
