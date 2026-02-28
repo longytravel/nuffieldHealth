@@ -45,7 +45,7 @@ function isNonProcedural(specialties: string[]): boolean {
  * Calculates profile_completeness_score, quality_tier, and flags.
  */
 export function scoreConsultant(data: ScoreInput): ScoreResult {
-  const { weights, thresholds } = getLegacyScoreConfig();
+  const { weights, thresholds, gateRules } = getLegacyScoreConfig();
   let score = 0;
   const flags: Flag[] = [];
   const specialtyEvidence = [...data.specialty_primary, ...data.specialty_sub];
@@ -104,7 +104,8 @@ export function scoreConsultant(data: ScoreInput): ScoreResult {
   }
 
   // plain_english_score: 10 for >=4, 5 for =3, 0 for <=2
-  if (data.plain_english_score !== null) {
+  const bioEligibleForPlainEnglish = data.bio_depth === "substantive" || data.bio_depth === "adequate";
+  if (data.plain_english_score !== null && (!gateRules.plainEnglishRequiresAdequateBio || bioEligibleForPlainEnglish)) {
     if (data.plain_english_score >= 4) {
       score += weights.plain_english_4_plus;
     } else if (data.plain_english_score === 3) {
@@ -142,7 +143,7 @@ export function scoreConsultant(data: ScoreInput): ScoreResult {
   const failCount = failFlags.length;
 
   // 2+ fail flags → forced Incomplete regardless of score
-  if (failCount >= 2) {
+  if (gateRules.forceIncompleteOnFailCount > 0 && failCount >= gateRules.forceIncompleteOnFailCount) {
     return {
       profile_completeness_score: score,
       quality_tier: "Incomplete",
@@ -150,35 +151,40 @@ export function scoreConsultant(data: ScoreInput): ScoreResult {
     };
   }
 
-  // Check tiers from Gold down; any fail flag blocks Gold
+  // Check tiers from Gold down; fail blocking and mandatory gates are configurable.
   const hasPhoto = data.has_photo === true;
   const hasBioSubstantive = data.bio_depth === "substantive";
   const hasSpecialty = specialtyEvidence.length > 0;
 
-  // Gold: score >= 80, has_photo, bio_depth=substantive, specialty non-empty, no fail flags
+  function meetsTierGate(tier: "gold" | "silver" | "bronze"): boolean {
+    const tierGate = gateRules[tier];
+    if (tierGate.requirePhoto && !hasPhoto) return false;
+    if (tierGate.requireSubstantiveBio && !hasBioSubstantive) return false;
+    if (tierGate.requireSpecialtyEvidence && !hasSpecialty) return false;
+    return true;
+  }
+
+  // Gold
   if (
-    failCount === 0 &&
+    (!gateRules.blockGoldOnAnyFail || failCount === 0) &&
     score >= thresholds.gold.minScore &&
-    hasPhoto &&
-    hasBioSubstantive &&
-    hasSpecialty
+    meetsTierGate("gold")
   ) {
     return { profile_completeness_score: score, quality_tier: "Gold", flags };
   }
 
-  // Silver: score >= 60, has_photo, specialty non-empty
+  // Silver
   if (
     score >= thresholds.silver.minScore &&
-    hasPhoto &&
-    hasSpecialty
+    meetsTierGate("silver")
   ) {
     return { profile_completeness_score: score, quality_tier: "Silver", flags };
   }
 
-  // Bronze: score >= 40, specialty non-empty
+  // Bronze
   if (
     score >= thresholds.bronze.minScore &&
-    hasSpecialty
+    meetsTierGate("bronze")
   ) {
     return { profile_completeness_score: score, quality_tier: "Bronze", flags };
   }

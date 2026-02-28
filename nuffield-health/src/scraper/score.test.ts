@@ -167,6 +167,15 @@ describe("scoreConsultant", () => {
     );
   });
 
+  it("should award 0 plain-English points when bio is thin", () => {
+    const inputThinHighReadability = makeInput({ bio_depth: "thin", plain_english_score: 5 });
+    const inputThinLowReadability = makeInput({ bio_depth: "thin", plain_english_score: 1 });
+
+    expect(scoreConsultant(inputThinHighReadability).profile_completeness_score).toBe(
+      scoreConsultant(inputThinLowReadability).profile_completeness_score
+    );
+  });
+
   it("should award 5 points for booking_no_slots instead of 10", () => {
     const inputSlots = makeInput({ booking_state: "bookable_with_slots" });
     const inputNoSlots = makeInput({ booking_state: "bookable_no_slots" });

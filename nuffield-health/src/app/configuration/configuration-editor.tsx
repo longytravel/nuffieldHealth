@@ -4,7 +4,12 @@ import { useMemo, useState } from "react";
 import { Info, RotateCcw, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import type { ScoringConfig, ScoringWeightKey, TierThresholds } from "@/lib/scoring-config-schema";
+import type {
+  ScoringConfig,
+  ScoringWeightKey,
+  TierGateRule,
+  TierThresholds,
+} from "@/lib/scoring-config-schema";
 import {
   SCORING_DIMENSION_DEFINITIONS,
   SCORING_WEIGHT_KEYS,
@@ -17,9 +22,19 @@ interface ConfigurationEditorProps {
   initialConfig: ScoringConfig;
 }
 
+const TIER_KEYS = ["gold", "silver", "bronze"] as const;
+type TierKey = (typeof TIER_KEYS)[number];
+
+const TIER_LABELS: Record<TierKey, string> = {
+  gold: "Gold",
+  silver: "Silver",
+  bronze: "Bronze",
+};
+
 export function ConfigurationEditor({ initialConfig }: ConfigurationEditorProps) {
   const [weightsRaw, setWeightsRaw] = useState(initialConfig.weightsRaw);
   const [tierThresholds, setTierThresholds] = useState(initialConfig.tierThresholds);
+  const [gateRules, setGateRules] = useState(initialConfig.gateRules);
   const [updatedAt, setUpdatedAt] = useState(initialConfig.updatedAt);
   const [updatedBy, setUpdatedBy] = useState(initialConfig.updatedBy);
   const [version, setVersion] = useState(initialConfig.version);
@@ -48,6 +63,31 @@ export function ConfigurationEditor({ initialConfig }: ConfigurationEditorProps)
     }));
   }
 
+  function setFailThreshold(value: string): void {
+    const numeric = Number(value);
+    setGateRules((prev) => ({
+      ...prev,
+      forceIncompleteOnFailCount: Number.isFinite(numeric) && numeric >= 0 ? Math.round(numeric) : 0,
+    }));
+  }
+
+  function setBooleanGateRule(key: "blockGoldOnAnyFail" | "plainEnglishRequiresAdequateBio", checked: boolean): void {
+    setGateRules((prev) => ({
+      ...prev,
+      [key]: checked,
+    }));
+  }
+
+  function setTierGateRule(tier: TierKey, gateKey: keyof TierGateRule, checked: boolean): void {
+    setGateRules((prev) => ({
+      ...prev,
+      [tier]: {
+        ...prev[tier],
+        [gateKey]: checked,
+      },
+    }));
+  }
+
   async function saveConfiguration(): Promise<void> {
     setStatus({ type: "saving", message: "Saving configuration..." });
     try {
@@ -59,6 +99,7 @@ export function ConfigurationEditor({ initialConfig }: ConfigurationEditorProps)
           updatedBy: "ROG",
           weightsRaw,
           tierThresholds,
+          gateRules,
         }),
       });
       const payload = (await response.json()) as ScoringConfig & { error?: string };
@@ -68,6 +109,7 @@ export function ConfigurationEditor({ initialConfig }: ConfigurationEditorProps)
 
       setWeightsRaw(payload.weightsRaw);
       setTierThresholds(payload.tierThresholds);
+      setGateRules(payload.gateRules);
       setUpdatedAt(payload.updatedAt);
       setUpdatedBy(payload.updatedBy);
       setVersion(payload.version);
@@ -96,6 +138,7 @@ export function ConfigurationEditor({ initialConfig }: ConfigurationEditorProps)
 
       setWeightsRaw(payload.weightsRaw);
       setTierThresholds(payload.tierThresholds);
+      setGateRules(payload.gateRules);
       setUpdatedAt(payload.updatedAt);
       setUpdatedBy(payload.updatedBy);
       setVersion(payload.version);
@@ -201,6 +244,99 @@ export function ConfigurationEditor({ initialConfig }: ConfigurationEditorProps)
         ) : null}
       </div>
 
+      <div className="space-y-4 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-glass)] p-4">
+        <h3 className="text-sm font-semibold text-[var(--text-primary)]">Tier Gates And Fail Rules</h3>
+
+        <div className="grid gap-3 md:grid-cols-3">
+          <label className="space-y-1">
+            <span className="text-xs text-[var(--text-muted)]">Force Incomplete On Fail Count</span>
+            <Input
+              type="number"
+              min={0}
+              step={1}
+              value={gateRules.forceIncompleteOnFailCount}
+              onChange={(event) => setFailThreshold(event.currentTarget.value)}
+              className="font-mono"
+            />
+            <span className="text-[11px] text-[var(--text-muted)]">Set to 0 to disable forced Incomplete on fail flags.</span>
+          </label>
+
+          <label className="flex items-start gap-2 rounded-lg border border-[var(--border-subtle)] p-3">
+            <input
+              type="checkbox"
+              className="mt-0.5 h-4 w-4 accent-[var(--sensai-teal)]"
+              checked={gateRules.blockGoldOnAnyFail}
+              onChange={(event) => setBooleanGateRule("blockGoldOnAnyFail", event.currentTarget.checked)}
+            />
+            <span className="text-xs text-[var(--text-secondary)]">
+              <strong className="text-[var(--text-primary)]">Block Gold on any fail flag</strong>
+              <br />
+              If enabled, one fail flag prevents Gold even when score and gates are met.
+            </span>
+          </label>
+
+          <label className="flex items-start gap-2 rounded-lg border border-[var(--border-subtle)] p-3">
+            <input
+              type="checkbox"
+              className="mt-0.5 h-4 w-4 accent-[var(--sensai-teal)]"
+              checked={gateRules.plainEnglishRequiresAdequateBio}
+              onChange={(event) => setBooleanGateRule("plainEnglishRequiresAdequateBio", event.currentTarget.checked)}
+            />
+            <span className="text-xs text-[var(--text-secondary)]">
+              <strong className="text-[var(--text-primary)]">Plain English needs adequate bio</strong>
+              <br />
+              If enabled, thin or missing bio gets 0 plain-English points.
+            </span>
+          </label>
+        </div>
+
+        <div className="overflow-x-auto rounded-lg border border-[var(--border-subtle)]">
+          <table className="w-full min-w-[680px] text-sm">
+            <thead>
+              <tr className="border-b border-[var(--border-subtle)] bg-[var(--bg-secondary)]">
+                <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
+                  Tier
+                </th>
+                <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
+                  Require Photo
+                </th>
+                <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
+                  Require Substantive Bio
+                </th>
+                <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
+                  Require Specialty Evidence
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {TIER_KEYS.map((tier) => (
+                <tr key={tier} className="border-b border-[var(--border-subtle)] last:border-b-0">
+                  <td className="px-4 py-2 font-medium text-[var(--text-primary)]">{TIER_LABELS[tier]}</td>
+                  <td className="px-4 py-2">
+                    <GateToggle
+                      checked={gateRules[tier].requirePhoto}
+                      onCheckedChange={(checked) => setTierGateRule(tier, "requirePhoto", checked)}
+                    />
+                  </td>
+                  <td className="px-4 py-2">
+                    <GateToggle
+                      checked={gateRules[tier].requireSubstantiveBio}
+                      onCheckedChange={(checked) => setTierGateRule(tier, "requireSubstantiveBio", checked)}
+                    />
+                  </td>
+                  <td className="px-4 py-2">
+                    <GateToggle
+                      checked={gateRules[tier].requireSpecialtyEvidence}
+                      onCheckedChange={(checked) => setTierGateRule(tier, "requireSpecialtyEvidence", checked)}
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       <div className="flex flex-wrap items-center gap-3">
         <Button
           type="button"
@@ -224,7 +360,7 @@ export function ConfigurationEditor({ initialConfig }: ConfigurationEditorProps)
               : "text-[var(--text-muted)]"
           }`}
         >
-          {status.message ?? "Adjust weights, then save to activate for future scoring runs."}
+          {status.message ?? "Adjust weights, thresholds, and gate rules, then save to activate for future scoring runs."}
         </span>
       </div>
     </div>
@@ -260,6 +396,20 @@ function ThresholdInput({
         onChange={(event) => onChange(event.currentTarget.value)}
         className="font-mono"
       />
+    </label>
+  );
+}
+
+function GateToggle({ checked, onCheckedChange }: { checked: boolean; onCheckedChange: (checked: boolean) => void }) {
+  return (
+    <label className="inline-flex cursor-pointer items-center gap-2">
+      <input
+        type="checkbox"
+        className="h-4 w-4 accent-[var(--sensai-teal)]"
+        checked={checked}
+        onChange={(event) => onCheckedChange(event.currentTarget.checked)}
+      />
+      <span className="text-xs text-[var(--text-secondary)]">{checked ? "Required" : "Optional"}</span>
     </label>
   );
 }

@@ -22,6 +22,36 @@ export interface TierThresholds {
   bronze: number;
 }
 
+export interface TierGateRule {
+  requirePhoto: boolean;
+  requireSubstantiveBio: boolean;
+  requireSpecialtyEvidence: boolean;
+}
+
+export interface PartialTierGateRule {
+  requirePhoto?: unknown;
+  requireSubstantiveBio?: unknown;
+  requireSpecialtyEvidence?: unknown;
+}
+
+export interface GateRules {
+  forceIncompleteOnFailCount: number;
+  blockGoldOnAnyFail: boolean;
+  plainEnglishRequiresAdequateBio: boolean;
+  gold: TierGateRule;
+  silver: TierGateRule;
+  bronze: TierGateRule;
+}
+
+export interface PartialGateRules {
+  forceIncompleteOnFailCount?: unknown;
+  blockGoldOnAnyFail?: unknown;
+  plainEnglishRequiresAdequateBio?: unknown;
+  gold?: PartialTierGateRule;
+  silver?: PartialTierGateRule;
+  bronze?: PartialTierGateRule;
+}
+
 export interface ScoringConfig {
   version: number;
   updatedAt: string;
@@ -33,6 +63,7 @@ export interface ScoringConfig {
   weightsRaw: ScoringWeights;
   weightsEffective: ScoringWeights;
   tierThresholds: TierThresholds;
+  gateRules: GateRules;
 }
 
 export interface ScoringDimensionDefinition {
@@ -131,6 +162,33 @@ export const DEFAULT_TIER_THRESHOLDS: TierThresholds = {
   bronze: 40,
 };
 
+export const DEFAULT_TIER_GATES: Record<"gold" | "silver" | "bronze", TierGateRule> = {
+  gold: {
+    requirePhoto: true,
+    requireSubstantiveBio: true,
+    requireSpecialtyEvidence: true,
+  },
+  silver: {
+    requirePhoto: true,
+    requireSubstantiveBio: false,
+    requireSpecialtyEvidence: true,
+  },
+  bronze: {
+    requirePhoto: false,
+    requireSubstantiveBio: false,
+    requireSpecialtyEvidence: true,
+  },
+};
+
+export const DEFAULT_GATE_RULES: GateRules = {
+  forceIncompleteOnFailCount: 2,
+  blockGoldOnAnyFail: true,
+  plainEnglishRequiresAdequateBio: true,
+  gold: DEFAULT_TIER_GATES.gold,
+  silver: DEFAULT_TIER_GATES.silver,
+  bronze: DEFAULT_TIER_GATES.bronze,
+};
+
 export const LEGACY_BIO_ADEQUATE_MULTIPLIER = 2 / 3;
 export const LEGACY_PLAIN_ENGLISH_MID_MULTIPLIER = 0.5;
 export const LEGACY_BOOKING_NO_SLOTS_MULTIPLIER = 0.5;
@@ -144,6 +202,27 @@ function toFiniteNonNegative(value: unknown, fallback: number): number {
   const numeric = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(numeric) || numeric < 0) return fallback;
   return numeric;
+}
+
+function toFiniteNonNegativeInteger(value: unknown, fallback: number): number {
+  return Math.round(toFiniteNonNegative(value, fallback));
+}
+
+function toBoolean(value: unknown, fallback: boolean): boolean {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    if (value.toLowerCase() === "true") return true;
+    if (value.toLowerCase() === "false") return false;
+  }
+  return fallback;
+}
+
+function coerceTierGateRule(value: PartialTierGateRule | undefined, fallback: TierGateRule): TierGateRule {
+  return {
+    requirePhoto: toBoolean(value?.requirePhoto, fallback.requirePhoto),
+    requireSubstantiveBio: toBoolean(value?.requireSubstantiveBio, fallback.requireSubstantiveBio),
+    requireSpecialtyEvidence: toBoolean(value?.requireSpecialtyEvidence, fallback.requireSpecialtyEvidence),
+  };
 }
 
 export function coerceWeights(value: Partial<Record<ScoringWeightKey, unknown>> | undefined): ScoringWeights {
@@ -163,6 +242,23 @@ export function coerceTierThresholds(value: Partial<Record<keyof TierThresholds,
     gold: toFiniteNonNegative(value.gold, DEFAULT_TIER_THRESHOLDS.gold),
     silver: toFiniteNonNegative(value.silver, DEFAULT_TIER_THRESHOLDS.silver),
     bronze: toFiniteNonNegative(value.bronze, DEFAULT_TIER_THRESHOLDS.bronze),
+  };
+}
+
+export function coerceGateRules(value: PartialGateRules | undefined): GateRules {
+  return {
+    forceIncompleteOnFailCount: toFiniteNonNegativeInteger(
+      value?.forceIncompleteOnFailCount,
+      DEFAULT_GATE_RULES.forceIncompleteOnFailCount
+    ),
+    blockGoldOnAnyFail: toBoolean(value?.blockGoldOnAnyFail, DEFAULT_GATE_RULES.blockGoldOnAnyFail),
+    plainEnglishRequiresAdequateBio: toBoolean(
+      value?.plainEnglishRequiresAdequateBio,
+      DEFAULT_GATE_RULES.plainEnglishRequiresAdequateBio
+    ),
+    gold: coerceTierGateRule(value?.gold, DEFAULT_GATE_RULES.gold),
+    silver: coerceTierGateRule(value?.silver, DEFAULT_GATE_RULES.silver),
+    bronze: coerceTierGateRule(value?.bronze, DEFAULT_GATE_RULES.bronze),
   };
 }
 
@@ -204,6 +300,7 @@ export function getWeightsTotal(weights: ScoringWeights): number {
 export interface BuildScoringConfigInput {
   weightsRaw?: Partial<Record<ScoringWeightKey, unknown>>;
   tierThresholds?: Partial<Record<keyof TierThresholds, unknown>>;
+  gateRules?: PartialGateRules;
   updatedBy?: string;
   version?: number;
   updatedAt?: string;
@@ -222,6 +319,7 @@ export function buildScoringConfig(input?: BuildScoringConfigInput): ScoringConf
     weightsRaw,
     weightsEffective: normalizeWeights(weightsRaw, 100),
     tierThresholds: coerceTierThresholds(input?.tierThresholds),
+    gateRules: coerceGateRules(input?.gateRules),
   };
 }
 
@@ -249,6 +347,14 @@ export interface LegacyTierThresholds {
   incomplete: { minScore: number; mandatory: string[] };
 }
 
+function toLegacyMandatoryGates(gateRule: TierGateRule): string[] {
+  const gates: string[] = [];
+  if (gateRule.requirePhoto) gates.push("has_photo");
+  if (gateRule.requireSubstantiveBio) gates.push("bio_depth_substantive");
+  if (gateRule.requireSpecialtyEvidence) gates.push("specialty_non_empty");
+  return gates;
+}
+
 export function toLegacyScoreWeights(config: ScoringConfig): LegacyScoreWeights {
   const w = config.weightsEffective;
   return {
@@ -273,15 +379,15 @@ export function toLegacyTierThresholds(config: ScoringConfig): LegacyTierThresho
   return {
     gold: {
       minScore: config.tierThresholds.gold,
-      mandatory: ["has_photo", "bio_depth_substantive", "specialty_non_empty"],
+      mandatory: toLegacyMandatoryGates(config.gateRules.gold),
     },
     silver: {
       minScore: config.tierThresholds.silver,
-      mandatory: ["has_photo", "specialty_non_empty"],
+      mandatory: toLegacyMandatoryGates(config.gateRules.silver),
     },
     bronze: {
       minScore: config.tierThresholds.bronze,
-      mandatory: ["specialty_non_empty"],
+      mandatory: toLegacyMandatoryGates(config.gateRules.bronze),
     },
     incomplete: {
       minScore: 0,

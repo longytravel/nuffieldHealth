@@ -17,7 +17,8 @@ interface ConsultantData {
 }
 
 export function computeScoreBreakdown(c: ConsultantData): ScoreDimension[] {
-  const { weights } = getLegacyScoreConfig();
+  const { weights, gateRules } = getLegacyScoreConfig();
+  const bioEligibleForPlainEnglish = c.bio_depth === "substantive" || c.bio_depth === "adequate";
 
   return [
     {
@@ -75,9 +76,13 @@ export function computeScoreBreakdown(c: ConsultantData): ScoreDimension[] {
       label: "Plain English Score",
       maxPoints: weights.plain_english_4_plus,
       earned:
-        c.plain_english_score != null && c.plain_english_score >= 4
+        c.plain_english_score != null &&
+        (!gateRules.plainEnglishRequiresAdequateBio || bioEligibleForPlainEnglish) &&
+        c.plain_english_score >= 4
           ? weights.plain_english_4_plus
-          : c.plain_english_score != null && c.plain_english_score >= 3
+          : c.plain_english_score != null &&
+            (!gateRules.plainEnglishRequiresAdequateBio || bioEligibleForPlainEnglish) &&
+            c.plain_english_score >= 3
           ? weights.plain_english_3
           : 0,
     },

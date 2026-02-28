@@ -30,6 +30,7 @@ function parseConfigFile(raw: string): ScoringConfig {
     updatedBy: typeof parsed.updatedBy === "string" ? parsed.updatedBy : "system",
     weightsRaw: parsed.weightsRaw,
     tierThresholds: parsed.tierThresholds,
+    gateRules: parsed.gateRules,
   });
 }
 
@@ -69,6 +70,7 @@ export function saveScoringConfig(input: BuildScoringConfigInput): ScoringConfig
     updatedBy: input.updatedBy ?? "user",
     weightsRaw: input.weightsRaw ?? current.weightsRaw,
     tierThresholds: input.tierThresholds ?? current.tierThresholds,
+    gateRules: input.gateRules ?? current.gateRules,
   });
   writeConfigFile(next);
   return next;
@@ -90,5 +92,6 @@ export function getLegacyScoreConfig() {
     active,
     weights: toLegacyScoreWeights(active),
     thresholds: toLegacyTierThresholds(active),
+    gateRules: active.gateRules,
   };
 }

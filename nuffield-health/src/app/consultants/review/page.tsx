@@ -4,6 +4,7 @@ import Link from "next/link";
 import { PageTransition } from "@/components/ui/page-transition";
 import { ReviewActions } from "./review-actions";
 import { ResetReviewMarksButton } from "./reset-review-marks-button";
+import { readScoringConfig } from "@/lib/scoring-config";
 
 const SEVERITY_STYLES: Record<string, string> = {
   fail: "bg-red-100 text-red-800",
@@ -12,6 +13,7 @@ const SEVERITY_STYLES: Record<string, string> = {
 };
 
 export default async function ReviewQueuePage() {
+  const scoringConfig = readScoringConfig();
   const run = await getLatestRun();
 
   if (!run) {
@@ -47,7 +49,12 @@ export default async function ReviewQueuePage() {
 
   function getTierTooltip(c: (typeof flaggedConsultants)[number]): string {
     if (c.quality_tier === "Incomplete") {
-      return "Incomplete means score < 40, or mandatory tier gates are not met (for example missing specialty evidence), or 2+ fail flags.";
+      const failThreshold = scoringConfig.gateRules.forceIncompleteOnFailCount;
+      const failRuleText =
+        failThreshold > 0
+          ? `${failThreshold}+ fail flags trigger Incomplete`
+          : "fail-count forced Incomplete is disabled";
+      return `Incomplete means score < ${scoringConfig.tierThresholds.bronze}, or mandatory tier gates are not met, or ${failRuleText}.`;
     }
     return "Tier is based on score plus mandatory field gates.";
   }

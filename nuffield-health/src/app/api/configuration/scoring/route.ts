@@ -2,8 +2,10 @@ import { NextResponse } from "next/server";
 import { readScoringConfig, resetScoringConfig, saveScoringConfig } from "@/lib/scoring-config";
 import {
   SCORING_WEIGHT_KEYS,
+  coerceGateRules,
   coerceTierThresholds,
   isTierThresholdOrderValid,
+  type PartialGateRules,
   type ScoringWeightKey,
 } from "@/lib/scoring-config-schema";
 
@@ -16,6 +18,7 @@ interface SavePayload {
     silver?: number;
     bronze?: number;
   };
+  gateRules?: PartialGateRules;
 }
 
 export async function GET() {
@@ -39,6 +42,7 @@ export async function POST(request: Request) {
   }
 
   const tierThresholds = coerceTierThresholds(payload.tierThresholds);
+  const gateRules = coerceGateRules(payload.gateRules);
   if (!isTierThresholdOrderValid(tierThresholds)) {
     return NextResponse.json(
       { error: "Thresholds must satisfy Gold > Silver > Bronze >= 0" },
@@ -62,6 +66,7 @@ export async function POST(request: Request) {
     updatedBy,
     weightsRaw,
     tierThresholds,
+    gateRules,
   });
   return NextResponse.json(config);
 }
