@@ -12,6 +12,7 @@ import {
   Zap,
   ClipboardCheck,
   FileText,
+  Settings2,
   Bot,
   ChevronRight,
   Menu,
@@ -36,6 +37,7 @@ const navItems: NavItem[] = [
   { href: "/actions", label: "Actions", icon: Zap },
   { href: "/review", label: "Review", icon: ClipboardCheck },
   { href: "/reports", label: "Reports", icon: FileText },
+  { href: "/configuration", label: "Configuration", icon: Settings2 },
 ];
 
 const sidebarSpring = {

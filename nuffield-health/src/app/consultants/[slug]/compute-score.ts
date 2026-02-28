@@ -1,4 +1,5 @@
 import type { ScoreDimension } from "@/lib/types";
+import { getLegacyScoreConfig } from "@/lib/scoring-config";
 
 interface ConsultantData {
   has_photo: boolean | null;
@@ -16,89 +17,92 @@ interface ConsultantData {
 }
 
 export function computeScoreBreakdown(c: ConsultantData): ScoreDimension[] {
+  const { weights } = getLegacyScoreConfig();
+
   return [
     {
       key: "photo",
       label: "Profile Photo",
-      maxPoints: 10,
-      earned: c.has_photo ? 10 : 0,
+      maxPoints: weights.has_photo,
+      earned: c.has_photo ? weights.has_photo : 0,
     },
     {
       key: "bio_depth",
       label: "Biography Depth",
-      maxPoints: 15,
+      maxPoints: weights.bio_depth_substantive,
       earned:
         c.bio_depth === "substantive"
-          ? 15
+          ? weights.bio_depth_substantive
           : c.bio_depth === "adequate"
-          ? 10
-          : c.bio_depth === "thin"
-          ? 5
+          ? weights.bio_depth_adequate
           : 0,
     },
     {
       key: "treatments",
       label: "Treatments Listed",
-      maxPoints: 10,
-      earned: c.treatments.length > 0 ? 10 : 0,
+      maxPoints: weights.treatments_non_empty,
+      earned: c.treatments.length > 0 ? weights.treatments_non_empty : 0,
     },
     {
       key: "qualifications",
       label: "Qualifications",
-      maxPoints: 10,
-      earned: c.qualifications_credentials != null ? 10 : 0,
+      maxPoints: weights.qualifications_non_null,
+      earned: c.qualifications_credentials != null ? weights.qualifications_non_null : 0,
     },
     {
       key: "specialty",
       label: "Specialty Defined",
-      maxPoints: 10,
-      earned: c.specialty_primary.length > 0 || c.specialty_sub.length > 0 ? 10 : 0,
+      maxPoints: weights.specialty_primary_non_empty,
+      earned:
+        c.specialty_primary.length > 0 || c.specialty_sub.length > 0
+          ? weights.specialty_primary_non_empty
+          : 0,
     },
     {
       key: "insurers",
       label: "Insurers Listed",
-      maxPoints: 8,
-      earned: c.insurers.length > 0 ? 8 : 0,
+      maxPoints: weights.insurers_non_empty,
+      earned: c.insurers.length > 0 ? weights.insurers_non_empty : 0,
     },
     {
       key: "consultation_times",
       label: "Consultation Times",
-      maxPoints: 7,
-      earned: c.consultation_times_raw.length > 0 ? 7 : 0,
+      maxPoints: weights.consultation_times_non_empty,
+      earned: c.consultation_times_raw.length > 0 ? weights.consultation_times_non_empty : 0,
     },
     {
       key: "plain_english",
       label: "Plain English Score",
-      maxPoints: 10,
+      maxPoints: weights.plain_english_4_plus,
       earned:
         c.plain_english_score != null && c.plain_english_score >= 4
-          ? 10
+          ? weights.plain_english_4_plus
           : c.plain_english_score != null && c.plain_english_score >= 3
-          ? 5
+          ? weights.plain_english_3
           : 0,
     },
     {
       key: "booking",
       label: "Booking Availability",
-      maxPoints: 10,
+      maxPoints: weights.booking_with_slots,
       earned:
         c.booking_state === "bookable_with_slots"
-          ? 10
+          ? weights.booking_with_slots
           : c.booking_state === "bookable_no_slots"
-          ? 5
+          ? weights.booking_no_slots
           : 0,
     },
     {
       key: "practising_since",
       label: "Practising Since",
-      maxPoints: 5,
-      earned: c.practising_since != null ? 5 : 0,
+      maxPoints: weights.practising_since_non_null,
+      earned: c.practising_since != null ? weights.practising_since_non_null : 0,
     },
     {
       key: "memberships",
       label: "Memberships",
-      maxPoints: 5,
-      earned: c.memberships.length > 0 ? 5 : 0,
+      maxPoints: weights.memberships_non_empty,
+      earned: c.memberships.length > 0 ? weights.memberships_non_empty : 0,
     },
   ];
 }

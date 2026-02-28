@@ -3,6 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
 import { PageTransition } from "@/components/ui/page-transition";
 import { ReviewActions } from "./review-actions";
+import { ResetReviewMarksButton } from "./reset-review-marks-button";
 
 const SEVERITY_STYLES: Record<string, string> = {
   fail: "bg-red-100 text-red-800",
@@ -54,14 +55,19 @@ export default async function ReviewQueuePage() {
   return (
     <PageTransition className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Review Queue</h1>
-        <p className="text-muted-foreground">
-          {flaggedConsultants.length} profiles need review
-        </p>
-        <p className="mt-1 text-xs text-muted-foreground">
-          Includes profiles that are Incomplete, have fail-severity flags, or
-          contain low-confidence extractions.
-        </p>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Review Queue</h1>
+            <p className="text-muted-foreground">
+              {flaggedConsultants.length} profiles need review
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Includes profiles that are Incomplete, have fail-severity flags, or
+              contain low-confidence extractions.
+            </p>
+          </div>
+          <ResetReviewMarksButton runId={run.run_id} />
+        </div>
       </div>
 
       {flaggedConsultants.length === 0 ? (

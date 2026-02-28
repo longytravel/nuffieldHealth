@@ -6,6 +6,7 @@ if (existsSync(".env")) process.loadEnvFile(".env");
 export const APIM_SUBSCRIPTION_KEY = process.env.APIM_SUBSCRIPTION_KEY ?? "";
 export const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY ?? "";
 export const DATABASE_PATH = process.env.DATABASE_PATH ?? "data/nuffield.db";
+export const SCORING_CONFIG_PATH = process.env.SCORING_CONFIG_PATH ?? "data/scoring-config.json";
 export const HTML_CACHE_PATH = process.env.HTML_CACHE_PATH ?? "data/html-cache";
 export const SCRAPE_DELAY_MS = Number(process.env.SCRAPE_DELAY_MS ?? 1500);
 export const API_DELAY_MS = Number(process.env.API_DELAY_MS ?? 500);

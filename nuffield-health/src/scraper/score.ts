@@ -1,8 +1,5 @@
-import {
-  SCORE_WEIGHTS,
-  TIER_THRESHOLDS,
-  NON_PROCEDURAL_SPECIALTIES,
-} from "@/lib/config";
+import { NON_PROCEDURAL_SPECIALTIES } from "@/lib/config";
+import { getLegacyScoreConfig } from "@/lib/scoring-config";
 import type { Flag, FlagSeverity, QualityTier, BioDepth, BookingState } from "@/lib/types";
 
 export interface ScoreInput {
@@ -48,6 +45,7 @@ function isNonProcedural(specialties: string[]): boolean {
  * Calculates profile_completeness_score, quality_tier, and flags.
  */
 export function scoreConsultant(data: ScoreInput): ScoreResult {
+  const { weights, thresholds } = getLegacyScoreConfig();
   let score = 0;
   const flags: Flag[] = [];
   const specialtyEvidence = [...data.specialty_primary, ...data.specialty_sub];
@@ -58,16 +56,16 @@ export function scoreConsultant(data: ScoreInput): ScoreResult {
 
   // has_photo: 10 points
   if (data.has_photo === true) {
-    score += SCORE_WEIGHTS.has_photo;
+    score += weights.has_photo;
   } else {
     addFlag(flags, "PROFILE_NO_PHOTO", "fail", "Profile has no photo");
   }
 
   // bio_depth: 15 for substantive, 10 for adequate, 0 otherwise
   if (data.bio_depth === "substantive") {
-    score += SCORE_WEIGHTS.bio_depth_substantive;
+    score += weights.bio_depth_substantive;
   } else if (data.bio_depth === "adequate") {
-    score += SCORE_WEIGHTS.bio_depth_adequate;
+    score += weights.bio_depth_adequate;
   } else if (data.bio_depth === "missing" || data.bio_depth === null) {
     addFlag(flags, "CONTENT_MISSING_BIO", "fail", "Profile has no bio/about section");
   } else if (data.bio_depth === "thin") {
@@ -76,49 +74,49 @@ export function scoreConsultant(data: ScoreInput): ScoreResult {
 
   // treatments non-empty: 10 points (waived for non-procedural specialties)
   if (data.treatments.length > 0) {
-    score += SCORE_WEIGHTS.treatments_non_empty;
+    score += weights.treatments_non_empty;
   } else if (!specialtyWaiver) {
     addFlag(flags, "CONTENT_NO_TREATMENTS", "warn", "No treatments listed");
   }
 
   // qualifications: 10 points
   if (data.qualifications_credentials !== null && data.qualifications_credentials.length > 0) {
-    score += SCORE_WEIGHTS.qualifications_non_null;
+    score += weights.qualifications_non_null;
   } else {
     addFlag(flags, "CONTENT_NO_QUALIFICATIONS", "fail", "No qualifications listed");
   }
 
   // specialty evidence (primary or sub-specialty): 10 points
   if (specialtyEvidence.length > 0) {
-    score += SCORE_WEIGHTS.specialty_primary_non_empty;
+    score += weights.specialty_primary_non_empty;
   }
 
   // insurers: 8 points
   if (data.insurers.length > 0) {
-    score += SCORE_WEIGHTS.insurers_non_empty;
+    score += weights.insurers_non_empty;
   } else {
     addFlag(flags, "CONTENT_NO_INSURERS", "warn", "No insurers listed");
   }
 
   // consultation_times_raw: 7 points
   if (data.consultation_times_raw.length > 0) {
-    score += SCORE_WEIGHTS.consultation_times_non_empty;
+    score += weights.consultation_times_non_empty;
   }
 
   // plain_english_score: 10 for >=4, 5 for =3, 0 for <=2
   if (data.plain_english_score !== null) {
     if (data.plain_english_score >= 4) {
-      score += SCORE_WEIGHTS.plain_english_4_plus;
+      score += weights.plain_english_4_plus;
     } else if (data.plain_english_score === 3) {
-      score += SCORE_WEIGHTS.plain_english_3;
+      score += weights.plain_english_3;
     }
   }
 
   // booking_state: 10 for bookable_with_slots, 5 for bookable_no_slots, 0 for not_bookable
   if (data.booking_state === "bookable_with_slots") {
-    score += SCORE_WEIGHTS.booking_with_slots;
+    score += weights.booking_with_slots;
   } else if (data.booking_state === "bookable_no_slots") {
-    score += SCORE_WEIGHTS.booking_no_slots;
+    score += weights.booking_no_slots;
     addFlag(flags, "BOOKING_NO_SLOTS", "warn", "Bookable online but no available slots in next 28 days");
   } else if (data.booking_state === "not_bookable" || data.booking_state === null) {
     addFlag(flags, "BOOKING_NOT_BOOKABLE", "info", "Not bookable online");
@@ -126,12 +124,12 @@ export function scoreConsultant(data: ScoreInput): ScoreResult {
 
   // practising_since: 5 points
   if (data.practising_since !== null) {
-    score += SCORE_WEIGHTS.practising_since_non_null;
+    score += weights.practising_since_non_null;
   }
 
   // memberships: 5 points
   if (data.memberships.length > 0) {
-    score += SCORE_WEIGHTS.memberships_non_empty;
+    score += weights.memberships_non_empty;
   }
 
   // --- Flag generation (non-scoring flags) ---
@@ -160,7 +158,7 @@ export function scoreConsultant(data: ScoreInput): ScoreResult {
   // Gold: score >= 80, has_photo, bio_depth=substantive, specialty non-empty, no fail flags
   if (
     failCount === 0 &&
-    score >= TIER_THRESHOLDS.gold.minScore &&
+    score >= thresholds.gold.minScore &&
     hasPhoto &&
     hasBioSubstantive &&
     hasSpecialty
@@ -170,7 +168,7 @@ export function scoreConsultant(data: ScoreInput): ScoreResult {
 
   // Silver: score >= 60, has_photo, specialty non-empty
   if (
-    score >= TIER_THRESHOLDS.silver.minScore &&
+    score >= thresholds.silver.minScore &&
     hasPhoto &&
     hasSpecialty
   ) {
@@ -179,7 +177,7 @@ export function scoreConsultant(data: ScoreInput): ScoreResult {
 
   // Bronze: score >= 40, specialty non-empty
   if (
-    score >= TIER_THRESHOLDS.bronze.minScore &&
+    score >= thresholds.bronze.minScore &&
     hasSpecialty
   ) {
     return { profile_completeness_score: score, quality_tier: "Bronze", flags };
