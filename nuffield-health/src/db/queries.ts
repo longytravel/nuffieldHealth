@@ -1,7 +1,7 @@
 import { db } from "./index";
-import { scrapeRuns, consultants } from "./schema";
+import { scrapeRuns, consultants, profileRewrites, researchSources, consultantPhotos } from "./schema";
 import { eq, desc, and, sql, like, or, asc } from "drizzle-orm";
-import type { ConsultantFilters, FilterCounts } from "@/lib/types";
+import type { ConsultantFilters, FilterCounts, BenchmarkProfile, RewriteStatus } from "@/lib/types";
 
 const REVIEW_QUEUE_RULE = sql`(
   ${consultants.quality_tier} = 'Incomplete'
@@ -68,9 +68,11 @@ function buildFilterConditions(runId: string, filters?: ConsultantFilters) {
   }
 
   if (filters?.has_photo !== undefined) {
-    conditions.push(
-      sql`${consultants.has_photo} = ${filters.has_photo ? 1 : 0}`
-    );
+    if (filters.has_photo) {
+      conditions.push(sql`${consultants.has_photo} = 1`);
+    } else {
+      conditions.push(sql`(${consultants.has_photo} = 0 OR ${consultants.has_photo} IS NULL)`);
+    }
   }
 
   if (filters?.has_fail_flags) {
@@ -82,6 +84,32 @@ function buildFilterConditions(runId: string, filters?: ConsultantFilters) {
   if (filters?.has_warn_flags) {
     conditions.push(
       sql`EXISTS (SELECT 1 FROM json_each(${consultants.flags}) WHERE json_extract(value, '$.severity') = 'warn')`
+    );
+  }
+
+  if (filters?.bio_needs_expansion) {
+    conditions.push(sql`${consultants.bio_depth} IN ('thin', 'missing')`);
+  }
+
+  if (filters?.missing_insurers) {
+    conditions.push(sql`(${consultants.insurer_count} = 0 OR ${consultants.insurer_count} IS NULL)`);
+  }
+
+  if (filters?.missing_consultation_times) {
+    conditions.push(
+      sql`(${consultants.consultation_times_raw} IS NULL OR json_array_length(${consultants.consultation_times_raw}) = 0)`
+    );
+  }
+
+  if (filters?.missing_qualifications) {
+    conditions.push(
+      sql`(${consultants.qualifications_credentials} IS NULL OR trim(${consultants.qualifications_credentials}) = '')`
+    );
+  }
+
+  if (filters?.missing_memberships) {
+    conditions.push(
+      sql`(${consultants.memberships} IS NULL OR json_array_length(${consultants.memberships}) = 0)`
     );
   }
 
@@ -256,7 +284,7 @@ export function getQuickActions(runId: string): QuickAction[] {
       missingBios: sql<number>`sum(case when ${consultants.bio_depth} = 'missing' then 1 else 0 end)`,
       missingInsurers: sql<number>`sum(case when ${consultants.insurer_count} = 0 or ${consultants.insurer_count} is null then 1 else 0 end)`,
       missingConsultationTimes: sql<number>`sum(case when json_array_length(${consultants.consultation_times_raw}) = 0 then 1 else 0 end)`,
-      missingQualifications: sql<number>`sum(case when ${consultants.qualifications_credentials} is null then 1 else 0 end)`,
+      missingQualifications: sql<number>`sum(case when ${consultants.qualifications_credentials} is null or trim(${consultants.qualifications_credentials}) = '' then 1 else 0 end)`,
     })
     .from(consultants)
     .where(eq(consultants.run_id, runId))
@@ -377,7 +405,7 @@ export function getConsultantCount(runId: string, filters?: ConsultantFilters) {
 export async function getFilterCounts(runId: string): Promise<FilterCounts> {
   const baseCondition = eq(consultants.run_id, runId);
 
-  const [tierRows, bookingRows, hospitalRows, specialtyRows, bioRows, photoRows, flagRows] = await Promise.all([
+  const [tierRows, bookingRows, hospitalRows, specialtyRows, bioRows, photoRows, flagRows, actionGapRow] = await Promise.all([
     db.select({
       quality_tier: consultants.quality_tier,
       count: sql<number>`count(*)`.as("count"),
@@ -435,6 +463,17 @@ export async function getFilterCounts(runId: string): Promise<FilterCounts> {
           WHERE consultants.run_id = ${runId}
           GROUP BY json_extract(j.value, '$.severity')`
     ),
+
+    db.select({
+      bio_needs_expansion: sql<number>`sum(case when ${consultants.bio_depth} in ('thin', 'missing') then 1 else 0 end)`,
+      missing_insurers: sql<number>`sum(case when ${consultants.insurer_count} = 0 or ${consultants.insurer_count} is null then 1 else 0 end)`,
+      missing_consultation_times: sql<number>`sum(case when ${consultants.consultation_times_raw} is null or json_array_length(${consultants.consultation_times_raw}) = 0 then 1 else 0 end)`,
+      missing_qualifications: sql<number>`sum(case when ${consultants.qualifications_credentials} is null or trim(${consultants.qualifications_credentials}) = '' then 1 else 0 end)`,
+      missing_memberships: sql<number>`sum(case when ${consultants.memberships} is null or json_array_length(${consultants.memberships}) = 0 then 1 else 0 end)`,
+    })
+      .from(consultants)
+      .where(baseCondition)
+      .get(),
   ]);
 
   const tiers: Record<string, number> = {};
@@ -479,6 +518,13 @@ export async function getFilterCounts(runId: string): Promise<FilterCounts> {
     bio_depths,
     photo: { has: photoHas, missing: photoMissing },
     flags,
+    action_gaps: {
+      bio_needs_expansion: actionGapRow?.bio_needs_expansion ?? 0,
+      missing_insurers: actionGapRow?.missing_insurers ?? 0,
+      missing_consultation_times: actionGapRow?.missing_consultation_times ?? 0,
+      missing_qualifications: actionGapRow?.missing_qualifications ?? 0,
+      missing_memberships: actionGapRow?.missing_memberships ?? 0,
+    },
   };
 }
 
@@ -708,7 +754,7 @@ export function getActionCentreData(runId: string): ActionItem[] {
       thinMissingBios: sql<number>`sum(case when ${consultants.bio_depth} in ('thin', 'missing') then 1 else 0 end)`,
       missingInsurers: sql<number>`sum(case when ${consultants.insurer_count} = 0 or ${consultants.insurer_count} is null then 1 else 0 end)`,
       missingConsultationTimes: sql<number>`sum(case when ${consultants.consultation_times_raw} is null or json_array_length(${consultants.consultation_times_raw}) = 0 then 1 else 0 end)`,
-      missingQualifications: sql<number>`sum(case when ${consultants.qualifications_credentials} is null then 1 else 0 end)`,
+      missingQualifications: sql<number>`sum(case when ${consultants.qualifications_credentials} is null or trim(${consultants.qualifications_credentials}) = '' then 1 else 0 end)`,
       missingMemberships: sql<number>`sum(case when ${consultants.memberships} is null or json_array_length(${consultants.memberships}) = 0 then 1 else 0 end)`,
     })
     .from(consultants)
@@ -739,7 +785,7 @@ export function getActionCentreData(runId: string): ActionItem[] {
       profilesAffected: counts.thinMissingBios,
       pointsPerProfile: 12.5,
       totalImpact: counts.thinMissingBios * 12.5,
-      filterParam: "bio_depth=thin",
+      filterParam: "bio_needs_expansion=true",
     });
   }
 
@@ -751,7 +797,7 @@ export function getActionCentreData(runId: string): ActionItem[] {
       profilesAffected: counts.missingInsurers,
       pointsPerProfile: 8,
       totalImpact: counts.missingInsurers * 8,
-      filterParam: "score_max=92",
+      filterParam: "missing_insurers=true",
     });
   }
 
@@ -763,7 +809,7 @@ export function getActionCentreData(runId: string): ActionItem[] {
       profilesAffected: counts.missingConsultationTimes,
       pointsPerProfile: 7,
       totalImpact: counts.missingConsultationTimes * 7,
-      filterParam: "score_max=93",
+      filterParam: "missing_consultation_times=true",
     });
   }
 
@@ -775,7 +821,7 @@ export function getActionCentreData(runId: string): ActionItem[] {
       profilesAffected: counts.missingQualifications,
       pointsPerProfile: 10,
       totalImpact: counts.missingQualifications * 10,
-      filterParam: "score_max=90",
+      filterParam: "missing_qualifications=true",
     });
   }
 
@@ -787,7 +833,7 @@ export function getActionCentreData(runId: string): ActionItem[] {
       profilesAffected: counts.missingMemberships,
       pointsPerProfile: 5,
       totalImpact: counts.missingMemberships * 5,
-      filterParam: "score_max=95",
+      filterParam: "missing_memberships=true",
     });
   }
 
@@ -961,4 +1007,235 @@ export function getSpecialtyList(runId: string): string[] {
         ORDER BY je.value`
   );
   return rows.map((r) => r.specialty);
+}
+
+// ============================================================
+// Profile Rewrite Engine Queries
+// ============================================================
+
+// Insert a new rewrite record
+export function insertRewrite(data: typeof profileRewrites.$inferInsert) {
+  return db.insert(profileRewrites).values(data).run();
+}
+
+// Get a rewrite by ID
+export function getRewrite(rewriteId: string) {
+  return db
+    .select()
+    .from(profileRewrites)
+    .where(eq(profileRewrites.rewrite_id, rewriteId))
+    .then((rows) => rows[0] ?? null);
+}
+
+// Get all rewrites for a consultant in a given run
+export function getRewritesForConsultant(slug: string, runId: string) {
+  return db
+    .select()
+    .from(profileRewrites)
+    .where(and(eq(profileRewrites.slug, slug), eq(profileRewrites.run_id, runId)))
+    .orderBy(desc(profileRewrites.created_at));
+}
+
+// Update rewrite status (accept/reject)
+export function updateRewriteStatus(
+  rewriteId: string,
+  status: RewriteStatus,
+  reviewedBy?: string
+) {
+  return db
+    .update(profileRewrites)
+    .set({
+      status,
+      reviewed_by: reviewedBy ?? null,
+      reviewed_at: new Date().toISOString(),
+    })
+    .where(eq(profileRewrites.rewrite_id, rewriteId))
+    .run();
+}
+
+// Update rewrite content and scores (called during pipeline)
+export function updateRewriteContent(
+  rewriteId: string,
+  data: Partial<typeof profileRewrites.$inferInsert>
+) {
+  return db
+    .update(profileRewrites)
+    .set(data)
+    .where(eq(profileRewrites.rewrite_id, rewriteId))
+    .run();
+}
+
+// Insert a research source
+export function insertResearchSource(data: typeof researchSources.$inferInsert) {
+  return db.insert(researchSources).values(data).run();
+}
+
+// Get all research sources for a rewrite
+export function getResearchSourcesForRewrite(rewriteId: string) {
+  return db
+    .select()
+    .from(researchSources)
+    .where(eq(researchSources.rewrite_id, rewriteId))
+    .orderBy(desc(researchSources.fetched_at));
+}
+
+// Get corroborated sources for a rewrite
+export function getCorroboratedSources(rewriteId: string) {
+  return db
+    .select()
+    .from(researchSources)
+    .where(and(eq(researchSources.rewrite_id, rewriteId), eq(researchSources.corroborated, 1)));
+}
+
+// Update corroboration status on a source
+export function markSourceCorroborated(sourceId: string, corroborated: boolean) {
+  return db
+    .update(researchSources)
+    .set({ corroborated: corroborated ? 1 : 0 })
+    .where(eq(researchSources.source_id, sourceId))
+    .run();
+}
+
+// Insert or update a consultant photo
+export function upsertConsultantPhoto(data: typeof consultantPhotos.$inferInsert) {
+  const existing = db
+    .select()
+    .from(consultantPhotos)
+    .where(eq(consultantPhotos.slug, data.slug))
+    .get();
+
+  if (existing) {
+    return db
+      .update(consultantPhotos)
+      .set(data)
+      .where(eq(consultantPhotos.slug, data.slug))
+      .run();
+  }
+  return db.insert(consultantPhotos).values(data).run();
+}
+
+// Get photo for a consultant
+export function getConsultantPhoto(slug: string) {
+  return db
+    .select()
+    .from(consultantPhotos)
+    .where(eq(consultantPhotos.slug, slug))
+    .then((rows) => rows[0] ?? null);
+}
+
+// Verify a consultant photo
+export function verifyConsultantPhoto(slug: string, verifiedBy: string) {
+  return db
+    .update(consultantPhotos)
+    .set({
+      verified_by: verifiedBy,
+      verified_at: new Date().toISOString(),
+    })
+    .where(eq(consultantPhotos.slug, slug))
+    .run();
+}
+
+// Get top N benchmark profiles by score (spec §9.1)
+export function getBenchmarkProfiles(
+  runId: string,
+  limit = 5,
+  specialty?: string
+): BenchmarkProfile[] {
+  type BenchmarkRow = {
+    slug: string;
+    consultant_name: string | null;
+    specialty_primary: string;
+    hospital_name_primary: string | null;
+    profile_completeness_score: number;
+    quality_tier: string | null;
+    has_photo: number | null;
+    bio_depth: string | null;
+    treatments_count: number;
+    qualifications_present: number;
+    memberships_count: number;
+    practising_since: number | null;
+  };
+
+  let rows: BenchmarkRow[];
+
+  if (specialty) {
+    rows = db.all<BenchmarkRow>(
+      sql`SELECT
+            c.slug,
+            c.consultant_name,
+            c.specialty_primary,
+            c.hospital_name_primary,
+            c.profile_completeness_score,
+            c.quality_tier,
+            c.has_photo,
+            c.bio_depth,
+            json_array_length(c.treatments) as treatments_count,
+            CASE WHEN c.qualifications_credentials IS NOT NULL THEN 1 ELSE 0 END as qualifications_present,
+            json_array_length(c.memberships) as memberships_count,
+            c.practising_since
+          FROM ${consultants} c, json_each(c.specialty_primary) as je
+          WHERE c.run_id = ${runId}
+            AND je.value = ${specialty}
+            AND c.profile_completeness_score IS NOT NULL
+          GROUP BY c.slug
+          ORDER BY c.profile_completeness_score DESC,
+            CASE WHEN c.bio_depth = 'substantive' THEN 0 ELSE 1 END,
+            CASE WHEN c.has_photo = 1 THEN 0 ELSE 1 END
+          LIMIT ${limit}`
+    );
+  } else {
+    rows = db.all<BenchmarkRow>(
+      sql`SELECT
+            c.slug,
+            c.consultant_name,
+            c.specialty_primary,
+            c.hospital_name_primary,
+            c.profile_completeness_score,
+            c.quality_tier,
+            c.has_photo,
+            c.bio_depth,
+            json_array_length(c.treatments) as treatments_count,
+            CASE WHEN c.qualifications_credentials IS NOT NULL THEN 1 ELSE 0 END as qualifications_present,
+            json_array_length(c.memberships) as memberships_count,
+            c.practising_since
+          FROM ${consultants} c
+          WHERE c.run_id = ${runId}
+            AND c.profile_completeness_score IS NOT NULL
+          ORDER BY c.profile_completeness_score DESC,
+            CASE WHEN c.bio_depth = 'substantive' THEN 0 ELSE 1 END,
+            CASE WHEN c.has_photo = 1 THEN 0 ELSE 1 END
+          LIMIT ${limit}`
+    );
+  }
+
+  return rows.map((row) => ({
+    slug: row.slug,
+    consultant_name: row.consultant_name ?? "Unknown",
+    specialty_primary: JSON.parse(row.specialty_primary ?? "[]"),
+    hospital_name_primary: row.hospital_name_primary,
+    profile_completeness_score: row.profile_completeness_score,
+    quality_tier: (row.quality_tier ?? "Incomplete") as BenchmarkProfile["quality_tier"],
+    has_photo: row.has_photo === 1,
+    bio_depth: row.bio_depth as BenchmarkProfile["bio_depth"],
+    treatments_count: row.treatments_count ?? 0,
+    qualifications_present: row.qualifications_present === 1,
+    memberships_count: row.memberships_count ?? 0,
+    practising_since: row.practising_since,
+  }));
+}
+
+// Get rewrite count stats for a run
+export function getRewriteStats(runId: string) {
+  const row = db
+    .select({
+      total: sql<number>`count(*)`,
+      drafts: sql<number>`sum(case when ${profileRewrites.status} = 'draft' then 1 else 0 end)`,
+      accepted: sql<number>`sum(case when ${profileRewrites.status} = 'accepted' then 1 else 0 end)`,
+      rejected: sql<number>`sum(case when ${profileRewrites.status} = 'rejected' then 1 else 0 end)`,
+    })
+    .from(profileRewrites)
+    .where(eq(profileRewrites.run_id, runId))
+    .get();
+
+  return row ?? { total: 0, drafts: 0, accepted: 0, rejected: 0 };
 }

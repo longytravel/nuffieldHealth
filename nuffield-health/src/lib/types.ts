@@ -63,6 +63,11 @@ export interface ConsultantFilters {
   has_photo?: boolean;
   has_fail_flags?: boolean;
   has_warn_flags?: boolean;
+  bio_needs_expansion?: boolean;
+  missing_insurers?: boolean;
+  missing_consultation_times?: boolean;
+  missing_qualifications?: boolean;
+  missing_memberships?: boolean;
   score_min?: number;
   score_max?: number;
   sort_by?: string;
@@ -77,6 +82,115 @@ export interface ScoreDimension {
   earned: number;
 }
 
+// ============================================================
+// Profile Rewrite Engine Types
+// ============================================================
+
+// Rewrite mode — full profile or single element
+export type RewriteMode = "full" | "element";
+
+// Rewrite status lifecycle
+export type RewriteStatus = "draft" | "accepted" | "rejected";
+
+// Rewritable element keys (spec §13)
+export type RewritableElementKey =
+  | "bio"
+  | "treatments"
+  | "qualifications"
+  | "specialty_sub"
+  | "memberships"
+  | "practising_since"
+  | "clinical_interests"
+  | "personal_interests"
+  | "photo";
+
+// Research pipeline stages (spec §4.1)
+export type ResearchStage =
+  | "searching"
+  | "fetching"
+  | "extracting"
+  | "corroborating"
+  | "generating"
+  | "scoring"
+  | "storing"
+  | "complete"
+  | "error";
+
+// Extracted fact from a research source
+export interface ExtractedFact {
+  element: string;
+  fact: string;
+  confidence: "high" | "medium" | "low";
+}
+
+// Rewrite progress for polling
+export interface RewriteProgress {
+  current_stage: ResearchStage;
+  sources_found: number;
+  facts_extracted: number;
+}
+
+// Element rewrite result for API response
+export interface ElementRewriteResult {
+  status: ResearchStage;
+  rewritten_content: string | null;
+  original_content: string | null;
+  sources: { source_id: string; url: string; title: string | null; corroborated: boolean }[];
+  projected_delta: number | null;
+  seo_score_before: number | null;
+  seo_score_after: number | null;
+}
+
+// Full rewrite API response
+export interface RewriteResponse {
+  rewrite_id: string;
+  status: ResearchStage;
+  progress: RewriteProgress | null;
+  elements: Partial<Record<RewritableElementKey, ElementRewriteResult>>;
+  projected_total_score: number | null;
+  projected_tier: QualityTier | null;
+}
+
+// Benchmark profile for the exemplar bar
+export interface BenchmarkProfile {
+  slug: string;
+  consultant_name: string;
+  specialty_primary: string[];
+  hospital_name_primary: string | null;
+  profile_completeness_score: number;
+  quality_tier: QualityTier;
+  has_photo: boolean | null;
+  bio_depth: BioDepth | null;
+  treatments_count: number;
+  qualifications_present: boolean;
+  memberships_count: number;
+  practising_since: number | null;
+}
+
+// Search API usage tracking
+export interface SearchUsage {
+  month: string; // YYYY-MM
+  queries_used: number;
+  last_query_at: string | null;
+}
+
+// SEO score breakdown (spec §10.1)
+export interface SeoScoreBreakdown {
+  keyword_richness: number;    // 0-30
+  content_length: number;      // 0-20
+  patient_language: number;    // 0-20
+  structured_completeness: number; // 0-20
+  location_signals: number;    // 0-10
+  total: number;               // 0-100
+}
+
+// Superlative blocklist for validation (spec §11.3)
+export const SUPERLATIVE_BLOCKLIST = [
+  "best", "leading", "top", "renowned", "world-class",
+  "unparalleled", "premier", "foremost", "preeminent",
+  "number one", "no. 1", "finest",
+] as const;
+
 // Filter counts for sidebar badges
 export interface FilterCounts {
   tiers: Record<string, number>;
@@ -86,4 +200,11 @@ export interface FilterCounts {
   bio_depths: Record<string, number>;
   photo: { has: number; missing: number };
   flags: { fail: number; warn: number };
+  action_gaps: {
+    bio_needs_expansion: number;
+    missing_insurers: number;
+    missing_consultation_times: number;
+    missing_qualifications: number;
+    missing_memberships: number;
+  };
 }

@@ -47,9 +47,9 @@ const QUICK_ACTION_FILTERS: Record<string, string> = {
   "Add profile photos": "has_photo=false",
   "Write missing biographies": "bio_depth=missing",
   "Expand thin biographies": "bio_depth=thin",
-  "Add qualifications and credentials": "score_max=90",
-  "List accepted insurers": "score_max=92",
-  "Add consultation times": "score_max=93",
+  "Add qualifications and credentials": "missing_qualifications=true",
+  "List accepted insurers": "missing_insurers=true",
+  "Add consultation times": "missing_consultation_times=true",
 };
 
 const TIER_COLORS: Record<string, string> = {

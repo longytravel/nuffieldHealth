@@ -27,6 +27,11 @@ interface ConsultantFiltersBarProps {
   has_photo?: string;
   has_fail_flags?: string;
   has_warn_flags?: string;
+  bio_needs_expansion?: string;
+  missing_insurers?: string;
+  missing_consultation_times?: string;
+  missing_qualifications?: string;
+  missing_memberships?: string;
   score_min?: string;
   score_max?: string;
   specialty?: string;
@@ -55,6 +60,11 @@ export function ConsultantFiltersBar({
   has_photo,
   has_fail_flags,
   has_warn_flags,
+  bio_needs_expansion,
+  missing_insurers,
+  missing_consultation_times,
+  missing_qualifications,
+  missing_memberships,
   score_min,
   score_max,
   specialty,
@@ -93,6 +103,11 @@ export function ConsultantFiltersBar({
   if (has_photo === "false") activeFilters.push({ key: "has_photo", label: "Missing Photo" });
   if (has_fail_flags === "true") activeFilters.push({ key: "has_fail_flags", label: "Has Fail Flags" });
   if (has_warn_flags === "true") activeFilters.push({ key: "has_warn_flags", label: "Has Warn Flags" });
+  if (bio_needs_expansion === "true") activeFilters.push({ key: "bio_needs_expansion", label: "Bio Needs Expansion" });
+  if (missing_insurers === "true") activeFilters.push({ key: "missing_insurers", label: "Missing Insurers" });
+  if (missing_consultation_times === "true") activeFilters.push({ key: "missing_consultation_times", label: "Missing Consultation Times" });
+  if (missing_qualifications === "true") activeFilters.push({ key: "missing_qualifications", label: "Missing Qualifications" });
+  if (missing_memberships === "true") activeFilters.push({ key: "missing_memberships", label: "Missing Memberships" });
   if (score_min) activeFilters.push({ key: "score_min", label: `Score >= ${score_min}` });
   if (score_max) activeFilters.push({ key: "score_max", label: `Score <= ${score_max}` });
   if (search) activeFilters.push({ key: "search", label: `Search: ${search}` });
@@ -271,6 +286,83 @@ export function ConsultantFiltersBar({
               Warn Flags
             </span>
             <span className="text-xs text-[var(--text-muted)] tabular-nums">{filterCounts.flags.warn}</span>
+          </button>
+        </div>
+      </FilterGroup>
+
+      {/* Improvement Actions */}
+      <FilterGroup title="Improvement Actions" defaultOpen>
+        <div className="space-y-1.5">
+          <button
+            onClick={() => updateParams({ missing_insurers: missing_insurers === "true" ? null : "true" })}
+            className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors ${
+              missing_insurers === "true"
+                ? "bg-[var(--bg-elevated)] text-[var(--text-primary)]"
+                : "text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]/50"
+            }`}
+          >
+            <span>Missing insurers</span>
+            <span className="text-xs text-[var(--text-muted)] tabular-nums">{filterCounts.action_gaps.missing_insurers}</span>
+          </button>
+
+          <button
+            onClick={() => updateParams({ missing_consultation_times: missing_consultation_times === "true" ? null : "true" })}
+            className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors ${
+              missing_consultation_times === "true"
+                ? "bg-[var(--bg-elevated)] text-[var(--text-primary)]"
+                : "text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]/50"
+            }`}
+          >
+            <span>Missing consultation times</span>
+            <span className="text-xs text-[var(--text-muted)] tabular-nums">{filterCounts.action_gaps.missing_consultation_times}</span>
+          </button>
+
+          <button
+            onClick={() => updateParams({ bio_needs_expansion: bio_needs_expansion === "true" ? null : "true" })}
+            className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors ${
+              bio_needs_expansion === "true"
+                ? "bg-[var(--bg-elevated)] text-[var(--text-primary)]"
+                : "text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]/50"
+            }`}
+          >
+            <span>Bio needs expansion</span>
+            <span className="text-xs text-[var(--text-muted)] tabular-nums">{filterCounts.action_gaps.bio_needs_expansion}</span>
+          </button>
+
+          <button
+            onClick={() => updateParams({ missing_memberships: missing_memberships === "true" ? null : "true" })}
+            className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors ${
+              missing_memberships === "true"
+                ? "bg-[var(--bg-elevated)] text-[var(--text-primary)]"
+                : "text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]/50"
+            }`}
+          >
+            <span>Missing memberships</span>
+            <span className="text-xs text-[var(--text-muted)] tabular-nums">{filterCounts.action_gaps.missing_memberships}</span>
+          </button>
+
+          <button
+            onClick={() => updateParams({ has_photo: has_photo === "false" ? null : "false" })}
+            className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors ${
+              has_photo === "false"
+                ? "bg-[var(--bg-elevated)] text-[var(--text-primary)]"
+                : "text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]/50"
+            }`}
+          >
+            <span>Missing photos</span>
+            <span className="text-xs text-[var(--text-muted)] tabular-nums">{filterCounts.photo.missing}</span>
+          </button>
+
+          <button
+            onClick={() => updateParams({ missing_qualifications: missing_qualifications === "true" ? null : "true" })}
+            className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors ${
+              missing_qualifications === "true"
+                ? "bg-[var(--bg-elevated)] text-[var(--text-primary)]"
+                : "text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]/50"
+            }`}
+          >
+            <span>Missing qualifications</span>
+            <span className="text-xs text-[var(--text-muted)] tabular-nums">{filterCounts.action_gaps.missing_qualifications}</span>
           </button>
         </div>
       </FilterGroup>

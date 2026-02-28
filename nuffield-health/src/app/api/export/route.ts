@@ -3,7 +3,7 @@ import { appendFileSync, mkdirSync } from "fs";
 import { dirname } from "path";
 import { getLatestRun, getConsultants } from "@/db/queries";
 import { EXPORT_INCLUDE_CONTACT_DATA } from "@/lib/config";
-import type { ConsultantFilters, QualityTier, BookingState } from "@/lib/types";
+import type { ConsultantFilters, QualityTier, BookingState, BioDepth } from "@/lib/types";
 
 const CONTACT_FIELDS = ["contact_phone", "contact_mobile", "contact_email"];
 
@@ -42,6 +42,24 @@ export async function GET(request: NextRequest) {
     quality_tier: (searchParams.get("quality_tier") as QualityTier) ?? undefined,
     booking_state: (searchParams.get("booking_state") as BookingState) ?? undefined,
     search: searchParams.get("search") ?? undefined,
+    bio_depth: (searchParams.get("bio_depth") as BioDepth) ?? undefined,
+    has_photo: searchParams.get("has_photo") === "true" ? true : searchParams.get("has_photo") === "false" ? false : undefined,
+    has_fail_flags: searchParams.get("has_fail_flags") === "true" ? true : undefined,
+    has_warn_flags: searchParams.get("has_warn_flags") === "true" ? true : undefined,
+    bio_needs_expansion: searchParams.get("bio_needs_expansion") === "true" ? true : undefined,
+    missing_insurers: searchParams.get("missing_insurers") === "true" ? true : undefined,
+    missing_consultation_times: searchParams.get("missing_consultation_times") === "true" ? true : undefined,
+    missing_qualifications: searchParams.get("missing_qualifications") === "true" ? true : undefined,
+    missing_memberships: searchParams.get("missing_memberships") === "true" ? true : undefined,
+    score_min: searchParams.get("score_min") && !Number.isNaN(Number(searchParams.get("score_min")))
+      ? Number(searchParams.get("score_min"))
+      : undefined,
+    score_max: searchParams.get("score_max") && !Number.isNaN(Number(searchParams.get("score_max")))
+      ? Number(searchParams.get("score_max"))
+      : undefined,
+    specialty: searchParams.get("specialty") ?? undefined,
+    sort_by: searchParams.get("sort_by") ?? undefined,
+    sort_dir: (searchParams.get("sort_dir") as "asc" | "desc" | null) ?? undefined,
     page: 1,
     per_page: 100000, // Export all matching
   };

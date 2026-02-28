@@ -36,6 +36,11 @@ export default async function ConsultantsPage({ searchParams }: PageProps) {
   const has_photo = has_photo_str === "true" ? true : has_photo_str === "false" ? false : undefined;
   const has_fail_flags = str("has_fail_flags") === "true" ? true : undefined;
   const has_warn_flags = str("has_warn_flags") === "true" ? true : undefined;
+  const bio_needs_expansion = str("bio_needs_expansion") === "true" ? true : undefined;
+  const missing_insurers = str("missing_insurers") === "true" ? true : undefined;
+  const missing_consultation_times = str("missing_consultation_times") === "true" ? true : undefined;
+  const missing_qualifications = str("missing_qualifications") === "true" ? true : undefined;
+  const missing_memberships = str("missing_memberships") === "true" ? true : undefined;
   const score_min = str("score_min") ? Number(str("score_min")) : undefined;
   const score_max = str("score_max") ? Number(str("score_max")) : undefined;
   const specialty = str("specialty");
@@ -52,6 +57,11 @@ export default async function ConsultantsPage({ searchParams }: PageProps) {
     has_photo,
     has_fail_flags,
     has_warn_flags,
+    bio_needs_expansion,
+    missing_insurers,
+    missing_consultation_times,
+    missing_qualifications,
+    missing_memberships,
     score_min: score_min !== undefined && !isNaN(score_min) ? score_min : undefined,
     score_max: score_max !== undefined && !isNaN(score_max) ? score_max : undefined,
     specialty,
@@ -100,6 +110,11 @@ export default async function ConsultantsPage({ searchParams }: PageProps) {
           has_photo={has_photo_str}
           has_fail_flags={str("has_fail_flags")}
           has_warn_flags={str("has_warn_flags")}
+          bio_needs_expansion={str("bio_needs_expansion")}
+          missing_insurers={str("missing_insurers")}
+          missing_consultation_times={str("missing_consultation_times")}
+          missing_qualifications={str("missing_qualifications")}
+          missing_memberships={str("missing_memberships")}
           score_min={str("score_min")}
           score_max={str("score_max")}
           specialty={specialty}
