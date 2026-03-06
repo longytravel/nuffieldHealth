@@ -8,6 +8,7 @@ import type { ConsultantFilters, QualityTier, BookingState, BioDepth } from "@/l
 const CONTACT_FIELDS = ["contact_phone", "contact_mobile", "contact_email"];
 
 function auditLogExport(ip: string) {
+  if (process.env.TURSO_DATABASE_URL) return; // Skip on serverless (read-only FS)
   const logPath = "data/audit.log";
   try {
     mkdirSync(dirname(logPath), { recursive: true });

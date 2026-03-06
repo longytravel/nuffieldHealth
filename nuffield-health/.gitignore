@@ -48,3 +48,5 @@ next-env.d.ts
 # data / runtime artifacts
 data/
 *.db
+
+.vercel

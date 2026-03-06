@@ -1,8 +1,8 @@
-# Nuffield Health Consultant Profile Quality Scraper
+# Nuffield Health — Consultant Intelligence Platform
 
 ## Project Overview
 
-Data pipeline + management dashboard that scrapes ~3,800 consultant profiles from nuffieldhealth.com, retrieves booking/pricing data via APIM APIs, runs AI quality assessment (Claude Haiku), and outputs structured data for stakeholder reporting.
+Data pipeline + management dashboard that scrapes ~3,800 consultant profiles from nuffieldhealth.com, retrieves booking/pricing data via APIM APIs, runs AI quality assessment (Claude Haiku), and outputs structured data for stakeholder reporting. Company: Cambrian Solutions (no branding applied yet — may change).
 
 ## Project Layout
 
@@ -81,6 +81,8 @@ npx tsx src/scraper/run.ts --slug mr-nigel-dsouza   # Single profile
 ## Current Status
 
 - Planning: Complete (quick spec v1.6, architecture doc)
-- Build: Complete (scraper pipeline + dashboard)
-- Testing: In progress — Round 1 live scrape completed, 7 bugs found and fixed
-- Next: Structured QA testing across broader profile sample
+- Build: Complete (scraper pipeline + dashboard + AI copilot + reports)
+- Dashboard: All SensAI branding removed, now "Consultant Intelligence" (unbranded)
+- Testing: Round 1 live scrape completed, 7 bugs found and fixed
+- Vercel: Static pages work; DB pages show "Demo Mode" (SQLite incompatible with serverless)
+- Next: Database upgrade to Turso for production Vercel deployment

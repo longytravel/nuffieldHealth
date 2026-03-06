@@ -1,9 +1,9 @@
+export const dynamic = "force-dynamic";
+
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { headers } from "next/headers";
-import { appendFileSync, mkdirSync } from "fs";
-import { dirname } from "path";
 import { getLatestRun, getConsultant, getSpecialtyAverageScore } from "@/db/queries";
+import { getLatestBupaRun, getConsultantComparison } from "@/db/bupa-queries";
 import { GlassCard } from "@/components/ui/glass-card";
 import { TierBadge } from "@/components/ui/tier-badge";
 import { ScoreGauge } from "@/components/ui/score-gauge";
@@ -20,19 +20,6 @@ import {
 
 interface PageProps {
   params: Promise<{ slug: string }>;
-}
-
-function auditLog(slug: string, ip: string) {
-  const logPath = "data/audit.log";
-  try {
-    mkdirSync(dirname(logPath), { recursive: true });
-    appendFileSync(
-      logPath,
-      `${new Date().toISOString()}\tdetail_view\t${slug}\t${ip}\n`
-    );
-  } catch {
-    // Non-blocking -- audit log failure should not break the page
-  }
 }
 
 function formatRegistrationNumber(regNum: string | null): { label: string; value: string } | null {
@@ -60,22 +47,20 @@ export default async function ConsultantDetailPage({ params }: PageProps) {
     notFound();
   }
 
-  // Audit logging (preserved from original)
-  const headersList = await headers();
-  const ip =
-    headersList.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-    headersList.get("x-real-ip") ??
-    "unknown";
-  auditLog(slug, ip);
-
   const c = consultant;
   const scoreDimensions = computeScoreBreakdown(c);
   const regInfo = formatRegistrationNumber(c.registration_number);
 
   // Get specialty average for comparison
   const primarySpecialty = c.specialty_primary.length > 0 ? c.specialty_primary[0] : null;
-  const specialtyAvg = primarySpecialty
-    ? await getSpecialtyAverageScore(run.run_id, primarySpecialty)
+  const [specialtyAvg, bupaRun] = await Promise.all([
+    primarySpecialty ? getSpecialtyAverageScore(run.run_id, primarySpecialty) : null,
+    getLatestBupaRun(),
+  ]);
+
+  // Get BUPA comparison if a BUPA run exists
+  const bupaComparison = bupaRun
+    ? await getConsultantComparison(slug, run.run_id, bupaRun.run_id)
     : null;
 
   const bookingLabel =
@@ -219,6 +204,7 @@ export default async function ConsultantDetailPage({ params }: PageProps) {
         consultant={c}
         scoreDimensions={scoreDimensions}
         specialtyAvg={specialtyAvg}
+        bupaComparison={bupaComparison}
       />
     </PageTransition>
   );

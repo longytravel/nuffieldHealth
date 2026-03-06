@@ -11,3 +11,10 @@ data/
 *.tsbuildinfo
 next-env.d.ts
 .playwright-mcp/
+
+# Large binary files — keep out of git
+*.mp4
+*.mp3
+*.docx
+tmp/
+video/

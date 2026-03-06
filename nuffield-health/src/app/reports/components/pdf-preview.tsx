@@ -253,7 +253,7 @@ export function PdfPreview({
       <!DOCTYPE html>
       <html>
         <head>
-          <title>SensAI Executive Report - Preview</title>
+          <title>Executive Report - Preview</title>
           <style>
             body { margin: 0; padding: 24px; font-family: system-ui, -apple-system, sans-serif; background: #fff; color: #111827; }
             table { width: 100%; border-collapse: collapse; }
@@ -300,16 +300,9 @@ export function PdfPreview({
       <GlassCard className="overflow-hidden p-0">
         <div ref={templateRef} className="space-y-6 bg-white p-8 text-gray-900">
           <div className="flex items-center justify-between border-b-2 border-[#06B6D4] pb-4">
-            <Image
-              src="/sensai-logo.png"
-              alt="SensAI"
-              width={140}
-              height={35}
-              className="h-9 w-auto"
-            />
-            <div className="text-right">
-              <p className="text-xs text-gray-500">Working in partnership with</p>
-              <p className="text-sm font-semibold text-[#1a5632]">Nuffield Health</p>
+            <div>
+              <h2 className="text-lg font-bold text-gray-900">Consultant Intelligence</h2>
+              <p className="text-xs text-gray-500">Nuffield Health Profile Quality</p>
             </div>
           </div>
 
@@ -631,7 +624,7 @@ export function PdfPreview({
           </div>
 
           <div className="flex items-center justify-between border-t border-gray-200 pt-3 text-[9px] text-gray-400">
-            <span>SensAI Consultant Intelligence Platform | Confidential</span>
+            <span>Consultant Intelligence Platform | Confidential</span>
             <span>Generated from live run snapshot {runId.slice(0, 8)}</span>
           </div>
         </div>

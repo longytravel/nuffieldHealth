@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, real, primaryKey } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, real, primaryKey, index } from "drizzle-orm/sqlite-core";
 
 // Scrape runs table — one row per pipeline execution
 export const scrapeRuns = sqliteTable("scrape_runs", {
@@ -33,7 +33,10 @@ export const consultants = sqliteTable(
     hospital_name_primary: text("hospital_name_primary"),
     hospital_code_primary: text("hospital_code_primary"),
 
-    // 3.2 Profile Quality Fields
+    // 3.2 Profile Content Fields
+    about_text: text("about_text"),
+
+    // 3.3 Profile Quality Fields
     has_photo: integer("has_photo", { mode: "boolean" }),
     specialty_primary: text("specialty_primary", { mode: "json" }).$type<string[]>().notNull().default([]),
     specialty_sub: text("specialty_sub", { mode: "json" }).$type<string[]>().notNull().default([]),
@@ -115,4 +118,178 @@ export const consultants = sqliteTable(
     reviewed_by: text("reviewed_by"),
   },
   (table) => [primaryKey({ columns: [table.run_id, table.slug] })]
+);
+
+// ============================================================
+// Profile Rewrite Engine Tables (spec §3)
+// ============================================================
+
+// Profile rewrites — every rewrite attempt, keyed by rewrite_id
+export const profileRewrites = sqliteTable(
+  "profile_rewrites",
+  {
+    rewrite_id: text("rewrite_id").primaryKey(),
+    run_id: text("run_id").notNull(),
+    slug: text("slug").notNull(),
+    rewrite_mode: text("rewrite_mode", { enum: ["full", "element"] }).notNull(),
+    element_key: text("element_key"),
+    original_content: text("original_content"),
+    rewritten_content: text("rewritten_content"),
+    source_ids: text("source_ids", { mode: "json" }).$type<string[]>(),
+    corroboration_summary: text("corroboration_summary"),
+    projected_score_delta: real("projected_score_delta"),
+    projected_total_score: real("projected_total_score"),
+    projected_tier: text("projected_tier", { enum: ["Gold", "Silver", "Bronze", "Incomplete"] }),
+    status: text("status", { enum: ["draft", "accepted", "rejected"] }).notNull().default("draft"),
+    seo_score_before: real("seo_score_before"),
+    seo_score_after: real("seo_score_after"),
+    created_at: text("created_at").notNull(),
+    reviewed_by: text("reviewed_by"),
+    reviewed_at: text("reviewed_at"),
+  },
+  (table) => [
+    index("idx_rewrites_slug_run").on(table.slug, table.run_id),
+    index("idx_rewrites_status").on(table.status),
+  ]
+);
+
+// Research sources — evidence trail for every piece of research
+export const researchSources = sqliteTable(
+  "research_sources",
+  {
+    source_id: text("source_id").primaryKey(),
+    rewrite_id: text("rewrite_id").notNull(),
+    slug: text("slug").notNull(),
+    search_query: text("search_query").notNull(),
+    result_url: text("result_url").notNull(),
+    result_title: text("result_title"),
+    page_content_snippet: text("page_content_snippet"),
+    extracted_facts: text("extracted_facts", { mode: "json" }).$type<
+      { element: string; fact: string; confidence: string }[]
+    >(),
+    corroborated: integer("corroborated").notNull().default(0),
+    reliability_notes: text("reliability_notes"),
+    fetched_at: text("fetched_at").notNull(),
+  },
+  (table) => [
+    index("idx_sources_slug_rewrite").on(table.slug, table.rewrite_id),
+    index("idx_sources_corroborated").on(table.corroborated),
+  ]
+);
+
+// ============================================================
+// BUPA Competitor Intelligence Tables
+// ============================================================
+
+// BUPA scrape runs — one row per BUPA pipeline execution
+export const bupaScrapeRuns = sqliteTable("bupa_scrape_runs", {
+  run_id: text("run_id").primaryKey(),
+  started_at: text("started_at").notNull(),
+  completed_at: text("completed_at"),
+  status: text("status", { enum: ["running", "completed", "failed"] }).notNull(),
+  total_profiles: integer("total_profiles").notNull().default(0),
+  success_count: integer("success_count").notNull().default(0),
+  error_count: integer("error_count").notNull().default(0),
+  match_count: integer("match_count").notNull().default(0),
+});
+
+// BUPA consultants — scraped BUPA profile data, keyed by (run_id, bupa_id)
+export const bupaConsultants = sqliteTable(
+  "bupa_consultants",
+  {
+    // Key fields
+    run_id: text("run_id")
+      .notNull()
+      .references(() => bupaScrapeRuns.run_id),
+    bupa_id: text("bupa_id").notNull(),
+
+    // Identity
+    bupa_slug: text("bupa_slug").notNull(),
+    consultant_name: text("consultant_name"),
+    registration_number: text("registration_number"),
+    profile_url: text("profile_url").notNull(),
+    has_photo: integer("has_photo", { mode: "boolean" }),
+
+    // Content
+    about_text: text("about_text"),
+    specialty_primary: text("specialty_primary", { mode: "json" }).$type<string[]>().notNull().default([]),
+    specialty_sub: text("specialty_sub", { mode: "json" }).$type<string[]>().notNull().default([]),
+    treatments: text("treatments", { mode: "json" }).$type<string[]>().notNull().default([]),
+    qualifications_credentials: text("qualifications_credentials"),
+    memberships: text("memberships", { mode: "json" }).$type<string[]>().notNull().default([]),
+    clinical_interests: text("clinical_interests", { mode: "json" }).$type<string[]>().notNull().default([]),
+    languages: text("languages", { mode: "json" }).$type<string[]>().notNull().default([]),
+    hospital_affiliations: text("hospital_affiliations", { mode: "json" }).$type<string[]>().notNull().default([]),
+    fee_assured: integer("fee_assured", { mode: "boolean" }),
+
+    // AI Assessment (same fields as Nuffield)
+    plain_english_score: integer("plain_english_score"),
+    plain_english_reason: text("plain_english_reason"),
+    bio_depth: text("bio_depth", { enum: ["substantive", "adequate", "thin", "missing"] }),
+    bio_depth_reason: text("bio_depth_reason"),
+    treatment_specificity_score: text("treatment_specificity_score", {
+      enum: ["highly_specific", "moderately_specific", "generic", "not_applicable"],
+    }),
+    treatment_specificity_reason: text("treatment_specificity_reason"),
+    qualifications_completeness: text("qualifications_completeness", {
+      enum: ["comprehensive", "adequate", "minimal", "missing"],
+    }),
+    qualifications_completeness_reason: text("qualifications_completeness_reason"),
+    ai_quality_notes: text("ai_quality_notes"),
+
+    // Scoring
+    profile_completeness_score: real("profile_completeness_score"),
+    adjusted_score: real("adjusted_score"),
+    quality_tier: text("quality_tier", { enum: ["Gold", "Silver", "Bronze", "Incomplete"] }),
+    flags: text("flags", { mode: "json" })
+      .$type<{ code: string; severity: string; message: string }[]>()
+      .notNull()
+      .default([]),
+
+    // Pipeline
+    scrape_status: text("scrape_status", {
+      enum: ["pending", "crawl_done", "parse_done", "assess_done", "complete", "error"],
+    }).notNull(),
+    scrape_error: text("scrape_error"),
+  },
+  (table) => [
+    primaryKey({ columns: [table.run_id, table.bupa_id] }),
+    index("idx_bupa_consultants_reg").on(table.registration_number),
+  ]
+);
+
+// Consultant matches — links Nuffield consultants to BUPA profiles
+export const consultantMatches = sqliteTable(
+  "consultant_matches",
+  {
+    match_id: text("match_id").primaryKey(),
+    nuffield_slug: text("nuffield_slug").notNull(),
+    bupa_id: text("bupa_id").notNull(),
+    match_method: text("match_method", { enum: ["sitemap", "name_search", "gmc_match"] }).notNull(),
+    match_confidence: text("match_confidence", { enum: ["high", "medium", "low"] }).notNull(),
+    registration_number: text("registration_number"),
+    matched_at: text("matched_at").notNull(),
+  },
+  (table) => [
+    index("idx_matches_nuffield_slug").on(table.nuffield_slug),
+    index("idx_matches_bupa_id").on(table.bupa_id),
+  ]
+);
+
+// Consultant photos — downloaded photographs
+export const consultantPhotos = sqliteTable(
+  "consultant_photos",
+  {
+    photo_id: text("photo_id").primaryKey(),
+    slug: text("slug").notNull().unique(),
+    file_path: text("file_path").notNull(),
+    source_url: text("source_url").notNull(),
+    source_attribution: text("source_attribution"),
+    width: integer("width"),
+    height: integer("height"),
+    file_size_bytes: integer("file_size_bytes"),
+    downloaded_at: text("downloaded_at").notNull(),
+    verified_by: text("verified_by"),
+    verified_at: text("verified_at"),
+  }
 );

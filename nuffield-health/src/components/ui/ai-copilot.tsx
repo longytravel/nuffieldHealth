@@ -215,7 +215,7 @@ export function AiCopilot() {
           <div className="flex items-center gap-2">
             <Bot className="h-5 w-5 text-[var(--sensai-teal)]" />
             <span className="text-sm font-semibold text-[var(--text-primary)]">
-              SensAI Copilot
+              AI Copilot
             </span>
             <span className="rounded-full bg-[var(--sensai-teal)]/15 px-2 py-0.5 text-[10px] font-medium text-[var(--sensai-teal)]">
               Beta
@@ -240,7 +240,7 @@ export function AiCopilot() {
                   <Sparkles className="h-6 w-6 text-[var(--sensai-teal)]" />
                 </div>
                 <h3 className="text-sm font-semibold text-[var(--text-primary)]">
-                  Ask SensAI anything
+                  Ask anything
                 </h3>
                 <p className="max-w-[280px] text-xs text-[var(--text-muted)]">
                   Query your consultant data in natural language. I can filter,
@@ -348,8 +348,8 @@ export function AiCopilot() {
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Ask SensAI anything..."
-              aria-label="Ask SensAI a question"
+              placeholder="Ask anything..."
+              aria-label="Ask a question"
               className="flex-1 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 py-2 text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--sensai-teal)] focus:outline-none focus:ring-1 focus:ring-[var(--sensai-teal)]/30"
               disabled={isLoading}
             />

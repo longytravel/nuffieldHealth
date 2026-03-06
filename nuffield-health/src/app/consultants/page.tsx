@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { getLatestRun, getConsultants, getConsultantCount, getFilterCounts } from "@/db/queries";
 import type { ConsultantFilters, QualityTier, BookingState, BioDepth } from "@/lib/types";
 import { ConsultantFiltersBar } from "./components/consultant-filters";

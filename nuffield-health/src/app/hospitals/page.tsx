@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import Link from "next/link";
 import { getLatestRun, getHospitalBenchmarks } from "@/db/queries";
 import { GlassCard } from "@/components/ui/glass-card";
@@ -20,7 +22,7 @@ export default async function HospitalsPage() {
     );
   }
 
-  const hospitals = getHospitalBenchmarks(run.run_id);
+  const hospitals = await getHospitalBenchmarks(run.run_id);
 
   return (
     <PageTransition className="space-y-8">

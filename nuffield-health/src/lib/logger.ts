@@ -1,5 +1,5 @@
 type LogLevel = "info" | "warn" | "error";
-type StageName = "CRAWL" | "PARSE" | "BOOKING" | "AI" | "SCORE" | "PIPELINE";
+type StageName = "CRAWL" | "PARSE" | "BOOKING" | "AI" | "SCORE" | "PIPELINE" | "BUPA" | "BUPA_DISC" | "BUPA_CRL" | "BUPA_PRS";
 
 function timestamp(): string {
   const now = new Date();

@@ -1,11 +1,13 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { TierBadge } from "@/components/ui/tier-badge";
 import { GlassCard } from "@/components/ui/glass-card";
-import { ArrowUpDown, ArrowUp, ArrowDown, Eye } from "lucide-react";
+import { RewriteButton } from "@/components/ui/rewrite-button";
+import { ArrowUpDown, ArrowUp, ArrowDown, Eye, Wand2 } from "lucide-react";
 
 interface ConsultantRow {
   slug: string;
@@ -49,6 +51,30 @@ export function ConsultantTable({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+
+  const [selectedSlugs, setSelectedSlugs] = useState<Set<string>>(new Set());
+
+  function toggleSelect(slug: string) {
+    setSelectedSlugs((prev) => {
+      const next = new Set(prev);
+      if (next.has(slug)) next.delete(slug);
+      else next.add(slug);
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    if (selectedSlugs.size === consultants.length) {
+      setSelectedSlugs(new Set());
+    } else {
+      setSelectedSlugs(new Set(consultants.map((c) => c.slug)));
+    }
+  }
+
+  function handleBatchRewrite() {
+    const slugs = [...selectedSlugs].join(",");
+    router.push(`/rewrite?batch=${slugs}`);
+  }
 
   function goToPage(newPage: number) {
     const params = new URLSearchParams(searchParams.toString());
@@ -102,11 +128,42 @@ export function ConsultantTable({
 
   return (
     <div className="min-w-0 space-y-4">
+      {/* Batch rewrite button */}
+      {selectedSlugs.size > 0 && (
+        <div className="flex items-center gap-3 rounded-xl border border-[var(--sensai-teal)]/20 bg-[var(--sensai-teal)]/5 px-4 py-2.5">
+          <span className="text-sm text-[var(--text-secondary)]">
+            {selectedSlugs.size} selected
+          </span>
+          <button
+            onClick={handleBatchRewrite}
+            className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium bg-[var(--sensai-teal)] text-[var(--bg-primary)] hover:bg-[var(--sensai-teal-dark)] transition-colors"
+          >
+            <Wand2 className="h-4 w-4" />
+            Batch Rewrite ({selectedSlugs.size} selected)
+          </button>
+          <button
+            onClick={() => setSelectedSlugs(new Set())}
+            className="text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors ml-auto"
+          >
+            Clear selection
+          </button>
+        </div>
+      )}
+
       <GlassCard className="min-w-0 overflow-hidden p-0">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[920px] table-fixed" aria-label="Consultant profiles">
+          <table className="w-full min-w-[980px] table-fixed" aria-label="Consultant profiles">
             <thead>
               <tr className="border-b border-[var(--border-subtle)]">
+                <th className="w-[40px] px-3 py-3 text-center">
+                  <input
+                    type="checkbox"
+                    checked={selectedSlugs.size === consultants.length && consultants.length > 0}
+                    onChange={toggleSelectAll}
+                    className="rounded border-[var(--border-subtle)] accent-[var(--sensai-teal)]"
+                    aria-label="Select all consultants"
+                  />
+                </th>
                 <SortableHeader label="Consultant" column="name" width="220px" sortBy={sortBy} sortDir={sortDir} toggleSort={toggleSort} SortIcon={SortIcon} />
                 <th className="w-[140px] px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">Specialty</th>
                 <SortableHeader label="Hospital" column="hospital" width="150px" sortBy={sortBy} sortDir={sortDir} toggleSort={toggleSort} SortIcon={SortIcon} />
@@ -115,7 +172,7 @@ export function ConsultantTable({
                 <SortableHeader label="Booking" column="booking" width="140px" sortBy={sortBy} sortDir={sortDir} toggleSort={toggleSort} SortIcon={SortIcon} />
                 <th className="hidden w-[80px] px-3 py-3 text-right text-xs font-medium uppercase tracking-wider text-[var(--text-muted)] 2xl:table-cell">Flags</th>
                 <th className="hidden w-[90px] px-3 py-3 text-right text-xs font-medium uppercase tracking-wider text-[var(--text-muted)] 2xl:table-cell">Plain Eng.</th>
-                <th className="w-[90px] px-3 py-3 text-center text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">Actions</th>
+                <th className="w-[140px] px-3 py-3 text-center text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -132,9 +189,18 @@ export function ConsultantTable({
                   <tr
                     key={c.slug}
                     className={`border-b border-[var(--border-subtle)] transition-colors hover:bg-[var(--bg-elevated)]/50 hover:border-l-2 hover:border-l-[var(--sensai-teal)] ${
-                      idx % 2 === 0 ? "bg-transparent" : "bg-[var(--bg-secondary)]/30"
+                      selectedSlugs.has(c.slug) ? "bg-[var(--sensai-teal)]/5" : idx % 2 === 0 ? "bg-transparent" : "bg-[var(--bg-secondary)]/30"
                     }`}
                   >
+                    <td className="px-3 py-3 text-center">
+                      <input
+                        type="checkbox"
+                        checked={selectedSlugs.has(c.slug)}
+                        onChange={() => toggleSelect(c.slug)}
+                        className="rounded border-[var(--border-subtle)] accent-[var(--sensai-teal)]"
+                        aria-label={`Select ${displayName}`}
+                      />
+                    </td>
                     <td className="px-3 py-3">
                       <div className="flex items-center gap-3">
                         <div className={`h-8 w-8 shrink-0 rounded-full flex items-center justify-center text-xs font-medium ${
@@ -259,7 +325,8 @@ export function ConsultantTable({
                       )}
                     </td>
                     <td className="px-3 py-3">
-                      <div className="flex items-center justify-center">
+                      <div className="flex items-center justify-center gap-1.5">
+                        <RewriteButton slug={c.slug} variant="icon-only" />
                         <Link
                           href={`/consultants/${c.slug}`}
                           className="inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-medium text-[var(--sensai-teal)] bg-[var(--sensai-teal)]/10 hover:bg-[var(--sensai-teal)]/20 transition-colors"

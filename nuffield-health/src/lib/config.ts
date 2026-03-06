@@ -13,6 +13,13 @@ export const API_DELAY_MS = Number(process.env.API_DELAY_MS ?? 500);
 export const BOOKING_API_CONCURRENCY = Number(process.env.BOOKING_API_CONCURRENCY ?? 3);
 export const DATA_RETENTION_DAYS = Number(process.env.DATA_RETENTION_DAYS ?? 90);
 export const EXPORT_INCLUDE_CONTACT_DATA = process.env.EXPORT_INCLUDE_CONTACT_DATA === "true";
+export const TAVILY_API_KEY = process.env.TAVILY_API_KEY ?? "";
+
+// BUPA competitor scraping
+export const BUPA_SCRAPE_DELAY_MS = Number(process.env.BUPA_SCRAPE_DELAY_MS ?? 3000);
+export const BUPA_HTML_CACHE_PATH = process.env.BUPA_HTML_CACHE_PATH ?? "data/bupa-html-cache";
+export const TURSO_DATABASE_URL = process.env.TURSO_DATABASE_URL ?? "";
+export const TURSO_AUTH_TOKEN = process.env.TURSO_AUTH_TOKEN ?? "";
 
 // Scoring weights — exact values from architecture.md §Scoring Specification
 export const SCORE_WEIGHTS = {

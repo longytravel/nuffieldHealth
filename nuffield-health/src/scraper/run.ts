@@ -51,8 +51,8 @@ function parseCliArgs(): CliArgs {
 
 // ── Database helpers ──────────────────────────────────────────────────────────
 
-function createRun(runId: string, totalProfiles: number): void {
-  db.insert(scrapeRuns).values({
+async function createRun(runId: string, totalProfiles: number): Promise<void> {
+  await db.insert(scrapeRuns).values({
     run_id: runId,
     started_at: new Date().toISOString(),
     status: "running",
@@ -62,8 +62,8 @@ function createRun(runId: string, totalProfiles: number): void {
   }).run();
 }
 
-function updateRunStatus(runId: string, status: "completed" | "failed", successCount: number, errorCount: number): void {
-  db.update(scrapeRuns)
+async function updateRunStatus(runId: string, status: "completed" | "failed", successCount: number, errorCount: number): Promise<void> {
+  await db.update(scrapeRuns)
     .set({
       completed_at: new Date().toISOString(),
       status,
@@ -74,8 +74,8 @@ function updateRunStatus(runId: string, status: "completed" | "failed", successC
     .run();
 }
 
-function findLatestIncompleteRun(): string | null {
-  const row = db.select()
+async function findLatestIncompleteRun(): Promise<string | null> {
+  const row = await db.select()
     .from(scrapeRuns)
     .where(eq(scrapeRuns.status, "running"))
     .orderBy(scrapeRuns.started_at)
@@ -85,20 +85,20 @@ function findLatestIncompleteRun(): string | null {
   return row?.run_id ?? null;
 }
 
-function upsertConsultant(runId: string, slug: string, data: Record<string, unknown>): void {
+async function upsertConsultant(runId: string, slug: string, data: Record<string, unknown>): Promise<void> {
   // Check if record exists
-  const existing = db.select()
+  const existing = await db.select()
     .from(consultants)
     .where(and(eq(consultants.run_id, runId), eq(consultants.slug, slug)))
     .get();
 
   if (existing) {
-    db.update(consultants)
+    await db.update(consultants)
       .set(data)
       .where(and(eq(consultants.run_id, runId), eq(consultants.slug, slug)))
       .run();
   } else {
-    db.insert(consultants)
+    await db.insert(consultants)
       .values({
         run_id: runId,
         slug,
@@ -111,8 +111,8 @@ function upsertConsultant(runId: string, slug: string, data: Record<string, unkn
   }
 }
 
-function getConsultantStatus(runId: string, slug: string): ScrapeStatus | null {
-  const row = db.select({ scrape_status: consultants.scrape_status })
+async function getConsultantStatus(runId: string, slug: string): Promise<ScrapeStatus | null> {
+  const row = await db.select({ scrape_status: consultants.scrape_status })
     .from(consultants)
     .where(and(eq(consultants.run_id, runId), eq(consultants.slug, slug)))
     .get();
@@ -132,7 +132,7 @@ async function runCrawlStage(
   try {
     const result = await fetchProfile(browser, url, slug, runId, progress);
     const profileStatus = result.httpStatus === 404 ? "deleted" : "active";
-    upsertConsultant(runId, slug, {
+    await upsertConsultant(runId, slug, {
       profile_url: url,
       http_status: result.httpStatus,
       profile_status: profileStatus,
@@ -142,7 +142,7 @@ async function runCrawlStage(
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     logger.error("CRAWL", slug, "error", msg, progress);
-    upsertConsultant(runId, slug, {
+    await upsertConsultant(runId, slug, {
       profile_url: url,
       profile_status: "error",
       scrape_status: "error",
@@ -152,13 +152,13 @@ async function runCrawlStage(
   }
 }
 
-function runParseStage(
+async function runParseStage(
   runId: string,
   slug: string,
   html: string,
   httpStatus: number,
   progress: { current: number; total: number }
-): ReturnType<typeof parseProfile> | null {
+): Promise<ReturnType<typeof parseProfile> | null> {
   try {
     const parsed = parseProfile(html, slug);
 
@@ -168,7 +168,7 @@ function runParseStage(
     if (parsed.overview_text) profileTextParts.push(parsed.overview_text);
     if (parsed.related_experience_text) profileTextParts.push(parsed.related_experience_text);
 
-    upsertConsultant(runId, slug, {
+    await upsertConsultant(runId, slug, {
       consultant_name: parsed.consultant_name,
       consultant_title_prefix: parsed.consultant_title_prefix,
       registration_number: parsed.registration_number,
@@ -205,6 +205,7 @@ function runParseStage(
       hospital_is_nuffield: parsed.hospital_is_nuffield,
       hospital_nuffield_at_nhs: parsed.hospital_nuffield_at_nhs,
       online_bookable: parsed.booking_state !== "not_bookable",
+      about_text: parsed.about_text,
       scrape_status: "parse_done",
     });
 
@@ -214,7 +215,7 @@ function runParseStage(
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     logger.error("PARSE", slug, "error", msg, progress);
-    upsertConsultant(runId, slug, {
+    await upsertConsultant(runId, slug, {
       scrape_status: "error",
       scrape_error: `parse: ${msg}`,
     });
@@ -242,7 +243,7 @@ async function runBookingStage(
 
   if (!gmcCodeForBooking || !onlineBookable) {
     logger.info("BOOKING", slug, "skipped", gmcCodeForBooking ? "not bookable online" : "non-numeric registration", progress);
-    upsertConsultant(runId, slug, {
+    await upsertConsultant(runId, slug, {
       booking_state: defaultResult.booking_state,
       available_days_next_28_days: 0,
       available_slots_next_28_days: 0,
@@ -257,7 +258,7 @@ async function runBookingStage(
 
   try {
     const bookingResult = await fetchBookingData(gmcCodeForBooking, slug, progress);
-    upsertConsultant(runId, slug, {
+    await upsertConsultant(runId, slug, {
       booking_state: bookingResult.booking_state,
       available_days_next_28_days: bookingResult.available_days_next_28_days,
       available_slots_next_28_days: bookingResult.available_slots_next_28_days,
@@ -273,7 +274,7 @@ async function runBookingStage(
     logger.error("BOOKING", slug, "error", msg, progress);
     // BUG-011: Preserve page-detected bookability on API failure
     const fallbackState = onlineBookable ? "bookable_no_slots" : "not_bookable";
-    upsertConsultant(runId, slug, {
+    await upsertConsultant(runId, slug, {
       booking_state: fallbackState,
       available_days_next_28_days: 0,
       available_slots_next_28_days: 0,
@@ -313,7 +314,7 @@ async function runAssessStage(
       assessment.bio_depth = heuristicBioDepth(parsed.about_text);
       assessment.bio_depth_reason = `${assessment.bio_depth_reason} — overridden by heuristic`;
     }
-    upsertConsultant(runId, slug, {
+    await upsertConsultant(runId, slug, {
       plain_english_score: assessment.plain_english_score,
       plain_english_reason: assessment.plain_english_reason,
       bio_depth: assessment.bio_depth,
@@ -329,7 +330,7 @@ async function runAssessStage(
 
     // Merge AI-inferred fields if they add value
     if (assessment.clinical_interests.length > 0) {
-      upsertConsultant(runId, slug, {
+      await upsertConsultant(runId, slug, {
         clinical_interests: [
           ...parsed.clinical_interests,
           ...assessment.clinical_interests.filter(
@@ -339,7 +340,7 @@ async function runAssessStage(
       });
     }
     if (assessment.languages.length > 0) {
-      upsertConsultant(runId, slug, {
+      await upsertConsultant(runId, slug, {
         languages: [
           ...parsed.languages,
           ...assessment.languages.filter(
@@ -349,17 +350,17 @@ async function runAssessStage(
       });
     }
     if (assessment.personal_interests && !parsed.personal_interests) {
-      upsertConsultant(runId, slug, {
+      await upsertConsultant(runId, slug, {
         personal_interests: assessment.personal_interests,
       });
     }
     if (assessment.professional_interests) {
-      upsertConsultant(runId, slug, {
+      await upsertConsultant(runId, slug, {
         professional_interests: assessment.professional_interests,
       });
     }
     if (assessment.inferred_sub_specialties.length > 0) {
-      upsertConsultant(runId, slug, {
+      await upsertConsultant(runId, slug, {
         specialty_sub: [
           ...parsed.specialty_sub,
           ...assessment.inferred_sub_specialties.filter(
@@ -374,7 +375,7 @@ async function runAssessStage(
     const msg = error instanceof Error ? error.message : String(error);
     logger.error("AI", slug, "error", msg, progress);
     const fallbackBioDepth = heuristicBioDepth(parsed.about_text);
-    upsertConsultant(runId, slug, {
+    await upsertConsultant(runId, slug, {
       scrape_status: "assess_done",
       scrape_error: `ai_assessment: ${msg}`,
       bio_depth: fallbackBioDepth,
@@ -400,14 +401,14 @@ async function runAssessStage(
   }
 }
 
-function runScoreStage(
+async function runScoreStage(
   runId: string,
   slug: string,
   parsed: ReturnType<typeof parseProfile>,
   bookingResult: { booking_state: BookingState; available_slots_next_28_days: number },
   assessment: { plain_english_score: number; bio_depth: string; inferred_sub_specialties?: string[] },
   progress: { current: number; total: number }
-): void {
+): Promise<void> {
   try {
     const mergedSpecialtySub = [
       ...parsed.specialty_sub,
@@ -484,7 +485,7 @@ function runScoreStage(
       });
     }
 
-    upsertConsultant(runId, slug, {
+    await upsertConsultant(runId, slug, {
       profile_completeness_score: scoreResult.profile_completeness_score,
       quality_tier: scoreResult.quality_tier,
       flags: scoreResult.flags,
@@ -496,7 +497,7 @@ function runScoreStage(
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     logger.error("SCORE", slug, "error", msg, progress);
-    upsertConsultant(runId, slug, {
+    await upsertConsultant(runId, slug, {
       scrape_status: "error",
       scrape_error: `score: ${msg}`,
     });
@@ -529,7 +530,7 @@ async function main(): Promise<void> {
   let runId: string;
 
   if (resume) {
-    const existingRunId = findLatestIncompleteRun();
+    const existingRunId = await findLatestIncompleteRun();
     if (!existingRunId) {
       logger.error("PIPELINE", "init", "error", "No incomplete run found to resume");
       process.exit(1);
@@ -568,10 +569,10 @@ async function main(): Promise<void> {
   const total = profiles.length;
 
   if (!resume) {
-    createRun(runId, total);
+    await createRun(runId, total);
   } else {
     // Update total in case sitemap changed
-    db.update(scrapeRuns)
+    await db.update(scrapeRuns)
       .set({ total_profiles: total })
       .where(eq(scrapeRuns.run_id, runId))
       .run();
@@ -591,7 +592,7 @@ async function main(): Promise<void> {
       const progress = { current: i + 1, total };
 
       // Check current status for resume logic
-      const currentStatus = getConsultantStatus(runId, slug);
+      const currentStatus = await getConsultantStatus(runId, slug);
       if (currentStatus === "complete") {
         successCount++;
         continue;
@@ -619,7 +620,7 @@ async function main(): Promise<void> {
           const { HTML_CACHE_PATH } = await import("@/lib/config");
           try {
             html = readFileSync(join(HTML_CACHE_PATH, runId, `${slug}.html`), "utf-8");
-            const row = db.select({ http_status: consultants.http_status })
+            const row = await db.select({ http_status: consultants.http_status })
               .from(consultants)
               .where(and(eq(consultants.run_id, runId), eq(consultants.slug, slug)))
               .get();
@@ -633,7 +634,7 @@ async function main(): Promise<void> {
 
         // Skip parse/booking/assess/score for deleted profiles
         if (httpStatus === 404) {
-          upsertConsultant(runId, slug, {
+          await upsertConsultant(runId, slug, {
             profile_status: "deleted",
             scrape_status: "complete",
           });
@@ -645,7 +646,7 @@ async function main(): Promise<void> {
         let parsed: ReturnType<typeof parseProfile> | null = null;
 
         if (!shouldSkipStage(currentStatus, "parse_done")) {
-          parsed = runParseStage(runId, slug, html!, httpStatus, progress);
+          parsed = await runParseStage(runId, slug, html!, httpStatus, progress);
           if (!parsed) {
             errorCount++;
             continue;
@@ -672,7 +673,7 @@ async function main(): Promise<void> {
           await applyApiDelay();
         } else {
           // Read from DB
-          const row = db.select({
+          const row = await db.select({
             booking_state: consultants.booking_state,
             available_days_next_28_days: consultants.available_days_next_28_days,
             available_slots_next_28_days: consultants.available_slots_next_28_days,
@@ -729,12 +730,12 @@ async function main(): Promise<void> {
 
         if (skipAssess) {
           logger.info("AI", slug, "skipped", "--skip-assess flag", progress);
-          upsertConsultant(runId, slug, { scrape_status: "assess_done" });
+          await upsertConsultant(runId, slug, { scrape_status: "assess_done" });
         } else if (!shouldSkipStage(currentStatus, "assess_done")) {
           assessment = await runAssessStage(runId, slug, parsed, progress);
         } else {
           // Read from DB
-          const row = db.select({
+          const row = await db.select({
             plain_english_score: consultants.plain_english_score,
             bio_depth: consultants.bio_depth,
           })
@@ -752,10 +753,10 @@ async function main(): Promise<void> {
         }
 
         // STAGE 5: SCORE
-        runScoreStage(runId, slug, parsed, bookingResult, assessment, progress);
+        await runScoreStage(runId, slug, parsed, bookingResult, assessment, progress);
 
         // Check final status
-        const finalStatus = getConsultantStatus(runId, slug);
+        const finalStatus = await getConsultantStatus(runId, slug);
         if (finalStatus === "complete") {
           successCount++;
         } else {
@@ -764,7 +765,7 @@ async function main(): Promise<void> {
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
         logger.error("PIPELINE", slug, "error", msg, progress);
-        upsertConsultant(runId, slug, {
+        await upsertConsultant(runId, slug, {
           profile_status: "error",
           scrape_status: "error",
           scrape_error: `pipeline: ${msg}`,
@@ -779,7 +780,7 @@ async function main(): Promise<void> {
 
   // Update run record
   const runStatus = errorCount === total ? "failed" : "completed";
-  updateRunStatus(runId, runStatus, successCount, errorCount);
+  await updateRunStatus(runId, runStatus, successCount, errorCount);
 
   // Log summary
   logger.info("PIPELINE", "summary", runStatus, `success=${successCount}, errors=${errorCount}, total=${total}`);

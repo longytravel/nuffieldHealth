@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import Link from "next/link";
 import { getLatestRun, getSpecialtyAnalysis } from "@/db/queries";
 import { GlassCard } from "@/components/ui/glass-card";
@@ -20,7 +22,7 @@ export default async function SpecialtiesPage() {
     );
   }
 
-  const specialties = getSpecialtyAnalysis(run.run_id);
+  const specialties = await getSpecialtyAnalysis(run.run_id);
 
   return (
     <PageTransition className="space-y-8">

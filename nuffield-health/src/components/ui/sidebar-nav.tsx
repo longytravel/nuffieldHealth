@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import Image from "next/image";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
@@ -12,7 +11,9 @@ import {
   Zap,
   ClipboardCheck,
   FileText,
+  Wand2,
   Settings2,
+  Swords,
   Bot,
   ChevronRight,
   Menu,
@@ -37,6 +38,8 @@ const navItems: NavItem[] = [
   { href: "/actions", label: "Actions", icon: Zap },
   { href: "/review", label: "Review", icon: ClipboardCheck },
   { href: "/reports", label: "Reports", icon: FileText },
+  { href: "/rewrite", label: "Rewrite", icon: Wand2 },
+  { href: "/competitor", label: "Competitor", icon: Swords },
   { href: "/configuration", label: "Configuration", icon: Settings2 },
 ];
 
@@ -66,12 +69,18 @@ function useScreenSize(): ScreenSize {
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
   const screenSize = useScreenSize();
   const [desktopCollapsed, setDesktopCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const isMobile = screenSize === "mobile";
   const collapsed = screenSize === "tablet" ? true : desktopCollapsed;
+
+  // Fullscreen routes bypass the shell entirely
+  if (pathname === "/presentation") {
+    return <>{children}</>;
+  }
 
   return (
     <div className="flex min-h-screen w-full">
@@ -171,29 +180,16 @@ function DesktopSidebar({
           )}
         >
           {collapsed ? (
-            <div className="h-8 w-10 shrink-0 overflow-hidden">
-              <Image
-                src="/sensai-logo.png"
-                alt="SensAI"
-                width={200}
-                height={100}
-                className="h-8 w-auto max-w-none"
-                style={{
-                  objectFit: "cover",
-                  objectPosition: "12% center",
-                }}
-                priority
-              />
+            <div className="h-8 w-8 shrink-0 rounded-lg bg-[var(--sensai-teal)]/20 flex items-center justify-center">
+              <span className="text-sm font-bold text-[var(--sensai-teal)]">CI</span>
             </div>
           ) : (
-            <Image
-              src="/sensai-logo.png"
-              alt="SensAI — Unifying Vision with AI"
-              width={200}
-              height={50}
-              className="h-10 w-auto"
-              priority
-            />
+            <div className="flex items-center gap-2 px-1">
+              <div className="h-8 w-8 shrink-0 rounded-lg bg-[var(--sensai-teal)]/20 flex items-center justify-center">
+                <span className="text-sm font-bold text-[var(--sensai-teal)]">CI</span>
+              </div>
+              <span className="text-sm font-semibold text-[var(--text-primary)]">Consultant Intelligence</span>
+            </div>
           )}
         </div>
         <AnimatePresence>
@@ -205,7 +201,7 @@ function DesktopSidebar({
               transition={{ duration: 0.15, ease: "easeOut" }}
               className="px-3 pb-2 text-[9px] leading-tight text-[var(--text-muted)] overflow-hidden"
             >
-              Working in partnership with Nuffield Health
+              Nuffield Health Profile Quality
             </motion.p>
           )}
         </AnimatePresence>
@@ -345,14 +341,12 @@ function MobileSidebar({ onClose }: { onClose: () => void }) {
     >
       {/* Header with close */}
       <div className="flex items-center justify-between border-b border-[var(--border-subtle)] px-4 py-3">
-        <Image
-          src="/sensai-logo.png"
-          alt="SensAI"
-          width={140}
-          height={35}
-          className="h-8 w-auto"
-          priority
-        />
+        <div className="flex items-center gap-2">
+          <div className="h-8 w-8 shrink-0 rounded-lg bg-[var(--sensai-teal)]/20 flex items-center justify-center">
+            <span className="text-sm font-bold text-[var(--sensai-teal)]">CI</span>
+          </div>
+          <span className="text-sm font-semibold text-[var(--text-primary)]">Consultant Intelligence</span>
+        </div>
         <button
           onClick={onClose}
           className="rounded-lg p-1.5 text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)]"

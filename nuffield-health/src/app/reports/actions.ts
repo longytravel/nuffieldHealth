@@ -3,10 +3,11 @@
 import { db } from "@/db/index";
 import { consultants, scrapeRuns } from "@/db/schema";
 import { eq, desc, and, like, sql } from "drizzle-orm";
+import type { QualityTier } from "@/lib/types";
 
 // Get the latest completed run (server-side helper)
-function getLatestRunId(): string | null {
-  const row = db
+async function getLatestRunId(): Promise<string | null> {
+  const row = await db
     .select({ run_id: scrapeRuns.run_id })
     .from(scrapeRuns)
     .where(eq(scrapeRuns.status, "completed"))
@@ -66,7 +67,7 @@ export async function exportCsv(
   tierFilter: string,
   hospitalFilter: string
 ): Promise<string> {
-  const runId = getLatestRunId();
+  const runId = await getLatestRunId();
   if (!runId) throw new Error("No completed runs found");
 
   // Validate columns
@@ -76,13 +77,13 @@ export async function exportCsv(
   // Build conditions
   const conditions = [eq(consultants.run_id, runId)];
   if (tierFilter && tierFilter !== "all") {
-    conditions.push(eq(consultants.quality_tier, tierFilter));
+    conditions.push(eq(consultants.quality_tier, tierFilter as QualityTier));
   }
   if (hospitalFilter) {
     conditions.push(like(consultants.hospital_name_primary, `%${hospitalFilter}%`));
   }
 
-  const rows = db
+  const rows = await db
     .select()
     .from(consultants)
     .where(and(...conditions))

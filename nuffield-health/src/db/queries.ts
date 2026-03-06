@@ -21,7 +21,7 @@ const REVIEW_QUEUE_RULE = sql`(
 )`;
 
 // Get the latest completed run
-export function getLatestRun() {
+export async function getLatestRun() {
   return db
     .select()
     .from(scrapeRuns)
@@ -32,7 +32,7 @@ export function getLatestRun() {
 }
 
 // Get all runs ordered by date
-export function getRunHistory() {
+export async function getRunHistory() {
   return db.select().from(scrapeRuns).orderBy(desc(scrapeRuns.started_at));
 }
 
@@ -158,7 +158,7 @@ function buildSortOrder(filters?: ConsultantFilters) {
 }
 
 // Get consultants for a run with optional filters
-export function getConsultants(runId: string, filters?: ConsultantFilters) {
+export async function getConsultants(runId: string, filters?: ConsultantFilters) {
   const conditions = buildFilterConditions(runId, filters);
 
   const page = filters?.page ?? 1;
@@ -175,7 +175,7 @@ export function getConsultants(runId: string, filters?: ConsultantFilters) {
 }
 
 // Get a single consultant by run_id and slug
-export function getConsultant(runId: string, slug: string) {
+export async function getConsultant(runId: string, slug: string) {
   return db
     .select()
     .from(consultants)
@@ -184,7 +184,7 @@ export function getConsultant(runId: string, slug: string) {
 }
 
 // Get quality tier distribution for a run
-export function getQualityTierDistribution(runId: string) {
+export async function getQualityTierDistribution(runId: string) {
   return db
     .select({
       quality_tier: consultants.quality_tier,
@@ -196,7 +196,7 @@ export function getQualityTierDistribution(runId: string) {
 }
 
 // Get flagged consultants for the review queue
-export function getFlaggedConsultants(runId: string) {
+export async function getFlaggedConsultants(runId: string) {
   return db
     .select()
     .from(consultants)
@@ -225,8 +225,8 @@ export interface DashboardKPIs {
   avgPrice: number | null;
 }
 
-export function getDashboardKPIs(runId: string): DashboardKPIs {
-  const row = db
+export async function getDashboardKPIs(runId: string): Promise<DashboardKPIs> {
+  const row = await db
     .select({
       totalProfiles: sql<number>`count(*)`,
       avgScore: sql<number>`coalesce(avg(${consultants.profile_completeness_score}), 0)`,
@@ -274,10 +274,10 @@ export interface QuickAction {
   totalImpact: number;
 }
 
-export function getQuickActions(runId: string): QuickAction[] {
+export async function getQuickActions(runId: string): Promise<QuickAction[]> {
   const actions: QuickAction[] = [];
 
-  const counts = db
+  const counts = await db
     .select({
       missingPhotos: sql<number>`sum(case when ${consultants.has_photo} = 0 or ${consultants.has_photo} is null then 1 else 0 end)`,
       thinBios: sql<number>`sum(case when ${consultants.bio_depth} = 'thin' then 1 else 0 end)`,
@@ -361,8 +361,8 @@ export interface HospitalLeaderboardEntry {
   incompleteCount: number;
 }
 
-export function getHospitalLeaderboard(runId: string): HospitalLeaderboardEntry[] {
-  const rows = db
+export async function getHospitalLeaderboard(runId: string): Promise<HospitalLeaderboardEntry[]> {
+  const rows = await db
     .select({
       hospitalName: consultants.hospital_name_primary,
       consultantCount: sql<number>`count(*)`,
@@ -391,7 +391,7 @@ export function getHospitalLeaderboard(runId: string): HospitalLeaderboardEntry[
 }
 
 // Get total count for a run (for pagination)
-export function getConsultantCount(runId: string, filters?: ConsultantFilters) {
+export async function getConsultantCount(runId: string, filters?: ConsultantFilters) {
   const conditions = buildFilterConditions(runId, filters);
 
   return db
@@ -529,8 +529,8 @@ export async function getFilterCounts(runId: string): Promise<FilterCounts> {
 }
 
 // Get specialty average score for comparison
-export function getSpecialtyAverageScore(runId: string, specialty: string) {
-  const rows = db.all<{ avg_score: number; count: number }>(
+export async function getSpecialtyAverageScore(runId: string, specialty: string) {
+  const rows = await db.all<{ avg_score: number; count: number }>(
     sql`SELECT AVG(profile_completeness_score) as avg_score, count(*) as count
         FROM consultants, json_each(consultants.specialty_primary) AS j
         WHERE consultants.run_id = ${runId}
@@ -561,8 +561,8 @@ export interface HospitalBenchmark {
   topSpecialty: string | null;
 }
 
-export function getHospitalBenchmarks(runId: string): HospitalBenchmark[] {
-  const rows = db
+export async function getHospitalBenchmarks(runId: string): Promise<HospitalBenchmark[]> {
+  const rows = await db
     .select({
       hospitalName: consultants.hospital_name_primary,
       consultantCount: sql<number>`count(*)`,
@@ -584,7 +584,7 @@ export function getHospitalBenchmarks(runId: string): HospitalBenchmark[] {
     .all();
 
   // Get top specialty per hospital using json_each
-  const topSpecRows = db.all<{ hospitalName: string; specialty: string; cnt: number }>(
+  const topSpecRows = await db.all<{ hospitalName: string; specialty: string; cnt: number }>(
     sql`SELECT c.hospital_name_primary as hospitalName, je.value as specialty, count(*) as cnt
         FROM ${consultants} c, json_each(c.specialty_primary) as je
         WHERE c.run_id = ${runId} AND c.hospital_name_primary IS NOT NULL
@@ -640,8 +640,8 @@ export interface SpecialtyBenchmark {
   commonFlags: { code: string; count: number }[];
 }
 
-export function getSpecialtyAnalysis(runId: string): SpecialtyBenchmark[] {
-  const rows = db.all<{
+export async function getSpecialtyAnalysis(runId: string): Promise<SpecialtyBenchmark[]> {
+  const rows = await db.all<{
     specialty: string;
     consultantCount: number;
     avgScore: number;
@@ -675,7 +675,7 @@ export function getSpecialtyAnalysis(runId: string): SpecialtyBenchmark[] {
   );
 
   // Get flag frequencies per specialty (top 3 per specialty)
-  const flagRows = db.all<{ specialty: string; flagCode: string; cnt: number }>(
+  const flagRows = await db.all<{ specialty: string; flagCode: string; cnt: number }>(
     sql`SELECT je.value as specialty, json_extract(fe.value, '$.code') as flagCode, count(*) as cnt
         FROM ${consultants} c, json_each(c.specialty_primary) as je, json_each(c.flags) as fe
         WHERE c.run_id = ${runId}
@@ -746,8 +746,8 @@ export interface ReportProfileRow {
   plainEnglishScore: number | null;
 }
 
-export function getActionCentreData(runId: string): ActionItem[] {
-  const counts = db
+export async function getActionCentreData(runId: string): Promise<ActionItem[]> {
+  const counts = await db
     .select({
       total: sql<number>`count(*)`,
       missingPhotos: sql<number>`sum(case when ${consultants.has_photo} = 0 or ${consultants.has_photo} is null then 1 else 0 end)`,
@@ -843,8 +843,8 @@ export function getActionCentreData(runId: string): ActionItem[] {
   return actions;
 }
 
-export function getImpactSummary(runId: string): ImpactSummary {
-  const row = db
+export async function getImpactSummary(runId: string): Promise<ImpactSummary> {
+  const row = await db
     .select({
       totalProfiles: sql<number>`count(*)`,
       avgScore: sql<number>`coalesce(avg(${consultants.profile_completeness_score}), 0)`,
@@ -879,7 +879,7 @@ export function getImpactSummary(runId: string): ImpactSummary {
   const projectedAvg = projectedTotalScore / total;
 
   // Count profiles that would reach Gold (>=80) if all actions taken
-  const projectedGoldCount = db
+  const projectedGoldCount = await db
     .select({
       count: sql<number>`count(*)`,
     })
@@ -908,8 +908,8 @@ export function getImpactSummary(runId: string): ImpactSummary {
   };
 }
 
-export function getTopPerformers(runId: string, limit = 5): ReportProfileRow[] {
-  const rows = db
+export async function getTopPerformers(runId: string, limit = 5): Promise<ReportProfileRow[]> {
+  const rows = await db
     .select({
       consultantName: consultants.consultant_name,
       slug: consultants.slug,
@@ -942,8 +942,8 @@ export function getTopPerformers(runId: string, limit = 5): ReportProfileRow[] {
   }));
 }
 
-export function getAtRiskProfiles(runId: string, limit = 8): ReportProfileRow[] {
-  const rows = db
+export async function getAtRiskProfiles(runId: string, limit = 8): Promise<ReportProfileRow[]> {
+  const rows = await db
     .select({
       consultantName: consultants.consultant_name,
       slug: consultants.slug,
@@ -987,8 +987,8 @@ export function getAtRiskProfiles(runId: string, limit = 8): ReportProfileRow[] 
 }
 
 // Get list of unique hospitals for filter dropdowns
-export function getHospitalList(runId: string): string[] {
-  const rows = db
+export async function getHospitalList(runId: string): Promise<string[]> {
+  const rows = await db
     .select({ name: consultants.hospital_name_primary })
     .from(consultants)
     .where(and(eq(consultants.run_id, runId), sql`${consultants.hospital_name_primary} is not null`))
@@ -999,8 +999,8 @@ export function getHospitalList(runId: string): string[] {
 }
 
 // Get list of unique specialties for filter dropdowns
-export function getSpecialtyList(runId: string): string[] {
-  const rows = db.all<{ specialty: string }>(
+export async function getSpecialtyList(runId: string): Promise<string[]> {
+  const rows = await db.all<{ specialty: string }>(
     sql`SELECT DISTINCT je.value as specialty
         FROM ${consultants} c, json_each(c.specialty_primary) as je
         WHERE c.run_id = ${runId}
@@ -1014,12 +1014,12 @@ export function getSpecialtyList(runId: string): string[] {
 // ============================================================
 
 // Insert a new rewrite record
-export function insertRewrite(data: typeof profileRewrites.$inferInsert) {
+export async function insertRewrite(data: typeof profileRewrites.$inferInsert) {
   return db.insert(profileRewrites).values(data).run();
 }
 
 // Get a rewrite by ID
-export function getRewrite(rewriteId: string) {
+export async function getRewrite(rewriteId: string) {
   return db
     .select()
     .from(profileRewrites)
@@ -1028,7 +1028,7 @@ export function getRewrite(rewriteId: string) {
 }
 
 // Get all rewrites for a consultant in a given run
-export function getRewritesForConsultant(slug: string, runId: string) {
+export async function getRewritesForConsultant(slug: string, runId: string) {
   return db
     .select()
     .from(profileRewrites)
@@ -1037,7 +1037,7 @@ export function getRewritesForConsultant(slug: string, runId: string) {
 }
 
 // Update rewrite status (accept/reject)
-export function updateRewriteStatus(
+export async function updateRewriteStatus(
   rewriteId: string,
   status: RewriteStatus,
   reviewedBy?: string
@@ -1054,7 +1054,7 @@ export function updateRewriteStatus(
 }
 
 // Update rewrite content and scores (called during pipeline)
-export function updateRewriteContent(
+export async function updateRewriteContent(
   rewriteId: string,
   data: Partial<typeof profileRewrites.$inferInsert>
 ) {
@@ -1066,12 +1066,12 @@ export function updateRewriteContent(
 }
 
 // Insert a research source
-export function insertResearchSource(data: typeof researchSources.$inferInsert) {
+export async function insertResearchSource(data: typeof researchSources.$inferInsert) {
   return db.insert(researchSources).values(data).run();
 }
 
 // Get all research sources for a rewrite
-export function getResearchSourcesForRewrite(rewriteId: string) {
+export async function getResearchSourcesForRewrite(rewriteId: string) {
   return db
     .select()
     .from(researchSources)
@@ -1080,7 +1080,7 @@ export function getResearchSourcesForRewrite(rewriteId: string) {
 }
 
 // Get corroborated sources for a rewrite
-export function getCorroboratedSources(rewriteId: string) {
+export async function getCorroboratedSources(rewriteId: string) {
   return db
     .select()
     .from(researchSources)
@@ -1088,7 +1088,7 @@ export function getCorroboratedSources(rewriteId: string) {
 }
 
 // Update corroboration status on a source
-export function markSourceCorroborated(sourceId: string, corroborated: boolean) {
+export async function markSourceCorroborated(sourceId: string, corroborated: boolean) {
   return db
     .update(researchSources)
     .set({ corroborated: corroborated ? 1 : 0 })
@@ -1097,8 +1097,8 @@ export function markSourceCorroborated(sourceId: string, corroborated: boolean) 
 }
 
 // Insert or update a consultant photo
-export function upsertConsultantPhoto(data: typeof consultantPhotos.$inferInsert) {
-  const existing = db
+export async function upsertConsultantPhoto(data: typeof consultantPhotos.$inferInsert) {
+  const existing = await db
     .select()
     .from(consultantPhotos)
     .where(eq(consultantPhotos.slug, data.slug))
@@ -1115,7 +1115,7 @@ export function upsertConsultantPhoto(data: typeof consultantPhotos.$inferInsert
 }
 
 // Get photo for a consultant
-export function getConsultantPhoto(slug: string) {
+export async function getConsultantPhoto(slug: string) {
   return db
     .select()
     .from(consultantPhotos)
@@ -1124,7 +1124,7 @@ export function getConsultantPhoto(slug: string) {
 }
 
 // Verify a consultant photo
-export function verifyConsultantPhoto(slug: string, verifiedBy: string) {
+export async function verifyConsultantPhoto(slug: string, verifiedBy: string) {
   return db
     .update(consultantPhotos)
     .set({
@@ -1136,11 +1136,11 @@ export function verifyConsultantPhoto(slug: string, verifiedBy: string) {
 }
 
 // Get top N benchmark profiles by score (spec §9.1)
-export function getBenchmarkProfiles(
+export async function getBenchmarkProfiles(
   runId: string,
   limit = 5,
   specialty?: string
-): BenchmarkProfile[] {
+): Promise<BenchmarkProfile[]> {
   type BenchmarkRow = {
     slug: string;
     consultant_name: string | null;
@@ -1159,7 +1159,7 @@ export function getBenchmarkProfiles(
   let rows: BenchmarkRow[];
 
   if (specialty) {
-    rows = db.all<BenchmarkRow>(
+    rows = await db.all<BenchmarkRow>(
       sql`SELECT
             c.slug,
             c.consultant_name,
@@ -1184,7 +1184,7 @@ export function getBenchmarkProfiles(
           LIMIT ${limit}`
     );
   } else {
-    rows = db.all<BenchmarkRow>(
+    rows = await db.all<BenchmarkRow>(
       sql`SELECT
             c.slug,
             c.consultant_name,
@@ -1225,8 +1225,8 @@ export function getBenchmarkProfiles(
 }
 
 // Get rewrite count stats for a run
-export function getRewriteStats(runId: string) {
-  const row = db
+export async function getRewriteStats(runId: string) {
+  const row = await db
     .select({
       total: sql<number>`count(*)`,
       drafts: sql<number>`sum(case when ${profileRewrites.status} = 'draft' then 1 else 0 end)`,

@@ -128,6 +128,7 @@ export interface RewriteProgress {
   current_stage: ResearchStage;
   sources_found: number;
   facts_extracted: number;
+  search_errors: string[];
 }
 
 // Element rewrite result for API response
@@ -167,7 +168,7 @@ export interface BenchmarkProfile {
   practising_since: number | null;
 }
 
-// Search API usage tracking
+// Search API usage tracking (Tavily: 1,000 queries/month free tier)
 export interface SearchUsage {
   month: string; // YYYY-MM
   queries_used: number;

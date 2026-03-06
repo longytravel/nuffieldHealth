@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { getLatestRun, getFlaggedConsultants } from "@/db/queries";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
@@ -5,6 +7,7 @@ import { PageTransition } from "@/components/ui/page-transition";
 import { ReviewActions } from "./review-actions";
 import { ResetReviewMarksButton } from "./reset-review-marks-button";
 import { readScoringConfig } from "@/lib/scoring-config";
+import { RewriteButton } from "@/components/ui/rewrite-button";
 
 const SEVERITY_STYLES: Record<string, string> = {
   fail: "bg-red-100 text-red-800",
@@ -158,7 +161,10 @@ export default async function ReviewQueuePage() {
                       : "-"}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <ReviewActions runId={run.run_id} slug={c.slug} />
+                    <div className="flex items-center justify-end gap-2">
+                      <RewriteButton slug={c.slug} variant="full" />
+                      <ReviewActions runId={run.run_id} slug={c.slug} />
+                    </div>
                   </td>
                 </tr>
               ))}

@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { getLatestRun, getActionCentreData, getImpactSummary } from "@/db/queries";
 import { GlassCard } from "@/components/ui/glass-card";
 import { PageTransition } from "@/components/ui/page-transition";
@@ -17,8 +19,8 @@ export default async function ActionsPage() {
     );
   }
 
-  const actions = getActionCentreData(run.run_id);
-  const impact = getImpactSummary(run.run_id);
+  const actions = await getActionCentreData(run.run_id);
+  const impact = await getImpactSummary(run.run_id);
 
   const scoreDelta = impact.projectedAvgScore - impact.currentAvgScore;
   const goldDelta = impact.projectedGoldPct - impact.currentGoldPct;

@@ -39,7 +39,11 @@ function createDefaultConfig(): ScoringConfig {
     version: 1,
     updatedBy: "system-default",
   });
-  writeConfigFile(config);
+  try {
+    writeConfigFile(config);
+  } catch {
+    // Serverless environments have read-only filesystems — skip persisting defaults
+  }
   return config;
 }
 

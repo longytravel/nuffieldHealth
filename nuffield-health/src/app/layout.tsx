@@ -15,7 +15,7 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "SensAI - Consultant Profile Quality",
+  title: "Consultant Intelligence",
   description: "AI-powered consultant profile quality management dashboard",
 };
 

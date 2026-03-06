@@ -3,7 +3,7 @@
 import { motion, type Variants } from "framer-motion";
 
 /**
- * Shared animation variants for the SensAI platform.
+ * Shared animation variants for the platform.
  * All animations use subtle, professional timing (150-300ms, ease-out).
  * Respects prefers-reduced-motion via framer-motion's built-in support.
  */

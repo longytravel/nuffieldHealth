@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
   }
 
   if (action === "reset_run") {
-    const result = db.update(consultants)
+    const result = await db.update(consultants)
       .set({
         manually_reviewed: false,
         reviewed_at: null,
@@ -28,7 +28,8 @@ export async function POST(request: NextRequest) {
       .where(eq(consultants.run_id, run_id))
       .run();
 
-    return NextResponse.json({ success: true, resetCount: result.changes });
+    const resetCount = (result as { changes?: number; rowsAffected?: number }).changes ?? (result as { rowsAffected?: number }).rowsAffected ?? 0;
+    return NextResponse.json({ success: true, resetCount });
   }
 
   if (action === "reset_profile") {
@@ -38,7 +39,7 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-    const result = db.update(consultants)
+    const result = await db.update(consultants)
       .set({
         manually_reviewed: false,
         reviewed_at: null,
@@ -46,7 +47,8 @@ export async function POST(request: NextRequest) {
       })
       .where(and(eq(consultants.run_id, run_id), eq(consultants.slug, slug)))
       .run();
-    return NextResponse.json({ success: true, resetCount: result.changes });
+    const resetCount2 = (result as { changes?: number; rowsAffected?: number }).changes ?? (result as { rowsAffected?: number }).rowsAffected ?? 0;
+    return NextResponse.json({ success: true, resetCount: resetCount2 });
   }
 
   if (!slug) {
@@ -56,7 +58,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  db.update(consultants)
+  await db.update(consultants)
     .set({
       manually_reviewed: true,
       reviewed_at: new Date().toISOString(),

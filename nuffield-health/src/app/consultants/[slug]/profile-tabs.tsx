@@ -11,12 +11,38 @@ import {
   Calendar,
   Brain,
   Code,
+  Swords,
   AlertTriangle,
   AlertCircle,
   Info,
   CheckCircle,
   XCircle,
+  ArrowUpRight,
+  TrendingUp,
+  TrendingDown,
+  Equal,
 } from "lucide-react";
+import { RewriteButton } from "@/components/ui/rewrite-button";
+import type { RewritableElementKey } from "@/lib/types";
+import type { ConsultantComparison, DimensionComparison } from "@/lib/bupa-types";
+
+// Map score dimension keys to rewritable element keys
+const SCORE_TO_REWRITE_KEY: Record<string, RewritableElementKey | null> = {
+  photo: "photo",
+  bio_depth: "bio",
+  treatments: "treatments",
+  qualifications: "qualifications",
+  specialty: "specialty_sub",
+  practising_since: "practising_since",
+  memberships: "memberships",
+  clinical_interests: "clinical_interests",
+  personal_interests: "personal_interests",
+  // These score dimensions have no rewritable equivalent
+  insurers: null,
+  consultation_times: null,
+  plain_english: null,
+  booking: null,
+};
 
 interface Flag {
   code: string;
@@ -86,17 +112,22 @@ interface ProfileTabsProps {
   };
   scoreDimensions: ScoreDimension[];
   specialtyAvg: { avg_score: number; count: number } | null;
+  bupaComparison?: ConsultantComparison | null;
 }
 
-type TabId = "ai-insights" | "overview" | "quality" | "booking" | "raw";
+type TabId = "ai-insights" | "overview" | "quality" | "booking" | "competitor" | "raw";
 
-const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
+const BASE_TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
   { id: "ai-insights", label: "AI Insights", icon: <Brain className="h-4 w-4" /> },
   { id: "overview", label: "Overview", icon: <FileText className="h-4 w-4" /> },
   { id: "quality", label: "Quality", icon: <Shield className="h-4 w-4" /> },
   { id: "booking", label: "Booking", icon: <Calendar className="h-4 w-4" /> },
   { id: "raw", label: "Raw Data", icon: <Code className="h-4 w-4" /> },
 ];
+
+const COMPETITOR_TAB: { id: TabId; label: string; icon: React.ReactNode } = {
+  id: "competitor", label: "Competitor", icon: <Swords className="h-4 w-4" />,
+};
 
 const SEVERITY_ICONS: Record<string, React.ReactNode> = {
   fail: <AlertCircle className="h-4 w-4 text-[var(--danger)]" />,
@@ -137,7 +168,7 @@ const SCORE_DIMENSION_DEFINITIONS: Record<string, string> = {
   memberships: "Presence of professional body memberships.",
 };
 
-export function ProfileTabs({ consultant: c, scoreDimensions, specialtyAvg }: ProfileTabsProps) {
+export function ProfileTabs({ consultant: c, scoreDimensions, specialtyAvg, bupaComparison }: ProfileTabsProps) {
   const [activeTab, setActiveTab] = useState<TabId>("ai-insights");
 
   const hasAiEvidence =
@@ -147,11 +178,17 @@ export function ProfileTabs({ consultant: c, scoreDimensions, specialtyAvg }: Pr
     c.qualifications_completeness_reason != null ||
     c.ai_quality_notes != null;
 
+  // Show competitor tab if BUPA data exists (matched or not — show "no match" state)
+  const hasBupaData = bupaComparison !== undefined;
+  const tabs = hasBupaData
+    ? [...BASE_TABS.slice(0, 4), COMPETITOR_TAB, ...BASE_TABS.slice(4)]
+    : BASE_TABS;
+
   return (
     <div className="space-y-6">
       {/* Tab Bar */}
-      <div className="flex gap-1 rounded-xl bg-[var(--bg-secondary)] p-1 border border-[var(--border-subtle)]">
-        {TABS.map((tab) => (
+      <div className="flex gap-1 rounded-xl bg-[var(--bg-secondary)] p-1 border border-[var(--border-subtle)] overflow-x-auto">
+        {tabs.map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
@@ -181,6 +218,7 @@ export function ProfileTabs({ consultant: c, scoreDimensions, specialtyAvg }: Pr
         <QualityTab consultant={c} scoreDimensions={scoreDimensions} />
       )}
       {activeTab === "booking" && <BookingTab consultant={c} />}
+      {activeTab === "competitor" && <CompetitorTab comparison={bupaComparison ?? null} />}
       {activeTab === "raw" && <RawDataTab consultant={c} />}
     </div>
   );
@@ -219,20 +257,25 @@ function AiInsightsTab({
       <GlassCard className="lg:col-span-2">
         <h3 className="text-h3 text-[var(--text-primary)] mb-4">AI Recommendations</h3>
         <div className="space-y-3">
-          {scoreDimensions
-            .filter((d) => d.earned < d.maxPoints)
-            .map((d) => (
-              <div key={d.key} className="flex items-center gap-3 rounded-lg bg-[var(--bg-secondary)] px-4 py-3">
-                <XCircle className="h-4 w-4 text-[var(--warning)] shrink-0" />
-                <div className="flex-1">
-                  <span className="text-sm font-medium text-[var(--text-primary)]">{d.label}</span>
-                  <span className="ml-2 text-xs text-[var(--text-muted)]">
-                    (+{d.maxPoints - d.earned} points available)
-                  </span>
+          {(() => {
+            const improvable = scoreDimensions.filter((d) => d.earned < d.maxPoints);
+            return improvable.length === 0 ? null : improvable.map((d) => {
+              const rewriteKey = SCORE_TO_REWRITE_KEY[d.key];
+              return (
+                <div key={d.key} className="flex items-center gap-3 rounded-lg bg-[var(--bg-secondary)] px-4 py-3">
+                  <XCircle className="h-4 w-4 text-[var(--warning)] shrink-0" />
+                  <div className="flex-1">
+                    <span className="text-sm font-medium text-[var(--text-primary)]">{d.label}</span>
+                    <span className="ml-2 text-xs text-[var(--text-muted)]">
+                      (+{d.maxPoints - d.earned} points available)
+                    </span>
+                  </div>
+                  {rewriteKey && <RewriteButton slug={c.slug} element={rewriteKey} variant="full" />}
                 </div>
-              </div>
-            ))}
-          {scoreDimensions.filter((d) => d.earned < d.maxPoints).length === 0 && (
+              );
+            });
+          })()}
+          {scoreDimensions.every((d) => d.earned >= d.maxPoints) && (
             <div className="flex items-center gap-3 rounded-lg bg-[var(--success)]/10 px-4 py-3">
               <CheckCircle className="h-4 w-4 text-[var(--success)]" />
               <span className="text-sm text-[var(--success)]">All score dimensions are maximised</span>
@@ -353,15 +396,22 @@ function SectionHeading({
   label,
   tooltip,
   suffix,
+  editSlug,
+  editElement,
 }: {
   label: string;
   tooltip?: string;
   suffix?: React.ReactNode;
+  editSlug?: string;
+  editElement?: string;
 }) {
   return (
     <h3 className="mb-3 flex items-center gap-2 text-h3 text-[var(--text-primary)]">
       <span>{label}</span>
       {suffix}
+      {editSlug && editElement && (
+        <RewriteButton slug={editSlug} element={editElement} variant="icon-only" />
+      )}
       {tooltip ? (
         <span
           title={tooltip}
@@ -379,12 +429,28 @@ function SectionHeading({
 function OverviewTab({ consultant: c }: { consultant: ProfileTabsProps["consultant"] }) {
   return (
     <div className="grid gap-6 lg:grid-cols-2">
+      {/* Biography */}
+      {c.about_text && (
+        <GlassCard className="lg:col-span-2">
+          <SectionHeading
+            label="Biography"
+            editSlug={c.slug}
+            editElement="bio"
+          />
+          <p className="text-sm text-[var(--text-secondary)] leading-relaxed whitespace-pre-wrap">
+            {c.about_text}
+          </p>
+        </GlassCard>
+      )}
+
       {/* Specialties */}
       {(c.specialty_primary.length > 0 || c.specialty_sub.length > 0) && (
         <GlassCard>
           <SectionHeading
             label="Specialties"
             tooltip={FIELD_DEFINITIONS.specialties}
+            editSlug={c.slug}
+            editElement="specialty_sub"
           />
           <div className="space-y-2">
             {c.specialty_primary.length > 0 && (
@@ -428,6 +494,8 @@ function OverviewTab({ consultant: c }: { consultant: ProfileTabsProps["consulta
             label="Treatments"
             suffix={<span className="text-sm text-[var(--text-muted)]">({c.treatments.length})</span>}
             tooltip={FIELD_DEFINITIONS.treatments}
+            editSlug={c.slug}
+            editElement="treatments"
           />
           <div className="flex flex-wrap gap-1.5 max-h-[300px] overflow-y-auto">
             {c.treatments.map((t, i) => (
@@ -448,6 +516,8 @@ function OverviewTab({ consultant: c }: { consultant: ProfileTabsProps["consulta
           <SectionHeading
             label="Qualifications"
             tooltip={FIELD_DEFINITIONS.qualifications}
+            editSlug={c.slug}
+            editElement="qualifications"
           />
           <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
             {c.qualifications_credentials}
@@ -458,7 +528,7 @@ function OverviewTab({ consultant: c }: { consultant: ProfileTabsProps["consulta
       {/* Memberships */}
       {c.memberships.length > 0 && (
         <GlassCard>
-          <h3 className="text-h3 text-[var(--text-primary)] mb-3">Memberships</h3>
+          <SectionHeading label="Memberships" editSlug={c.slug} editElement="memberships" />
           <ul className="space-y-1.5">
             {c.memberships.map((m, i) => (
               <li key={i} className="flex items-start gap-2 text-sm text-[var(--text-secondary)]">
@@ -597,9 +667,14 @@ function QualityTab({
                     {d.label}
                   </span>
                 </div>
-                <span className="text-xs tabular-nums text-[var(--text-muted)] font-mono">
-                  {d.earned}/{d.maxPoints}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs tabular-nums text-[var(--text-muted)] font-mono">
+                    {d.earned}/{d.maxPoints}
+                  </span>
+                  {d.earned < d.maxPoints && SCORE_TO_REWRITE_KEY[d.key] && (
+                    <RewriteButton slug={c.slug} element={SCORE_TO_REWRITE_KEY[d.key]!} variant="icon-only" />
+                  )}
+                </div>
               </div>
               <div className="h-2 w-full rounded-full bg-[var(--bg-elevated)] overflow-hidden">
                 <div
@@ -722,6 +797,152 @@ function BookingTab({ consultant: c }: { consultant: ProfileTabsProps["consultan
       )}
     </div>
   );
+}
+
+// ========== Competitor Tab ==========
+function CompetitorTab({ comparison }: { comparison: ConsultantComparison | null }) {
+  if (!comparison || !comparison.bupa_id) {
+    return (
+      <GlassCard className="flex flex-col items-center justify-center py-16 text-center">
+        <Swords className="h-12 w-12 text-[var(--text-muted)] mb-4" />
+        <h3 className="text-h3 text-[var(--text-primary)] mb-2">No BUPA Match Found</h3>
+        <p className="text-sm text-[var(--text-secondary)] max-w-md">
+          This consultant was not found on BUPA Finder. They may not be listed,
+          or the matching algorithm could not confirm a match.
+        </p>
+      </GlassCard>
+    );
+  }
+
+  const scoreDelta = (comparison.bupa_adjusted_score ?? 0) - (comparison.nuffield_adjusted_score ?? 0);
+  const bupaWins = scoreDelta > 2;
+  const nuffieldWins = scoreDelta < -2;
+
+  return (
+    <div className="grid gap-6 lg:grid-cols-2">
+      {/* Score Comparison */}
+      <GlassCard className="lg:col-span-2">
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="text-h3 text-[var(--text-primary)]">Score Comparison</h3>
+          {comparison.match_confidence && (
+            <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+              comparison.match_confidence === "high"
+                ? "bg-[var(--success)]/15 text-[var(--success)]"
+                : comparison.match_confidence === "medium"
+                ? "bg-[var(--warning)]/15 text-[var(--warning)]"
+                : "bg-[var(--text-muted)]/15 text-[var(--text-muted)]"
+            }`}>
+              {comparison.match_confidence} confidence match
+            </span>
+          )}
+        </div>
+
+        <div className="grid grid-cols-3 gap-4 text-center mb-6">
+          <div className="rounded-lg bg-[var(--bg-secondary)] p-4">
+            <p className="text-xs text-[var(--text-muted)] mb-1">Nuffield (adjusted)</p>
+            <p className="text-2xl font-bold font-mono text-[var(--sensai-teal)]">
+              {comparison.nuffield_adjusted_score?.toFixed(1) ?? "N/A"}
+            </p>
+            {comparison.nuffield_tier && (
+              <TierBadge
+                tier={comparison.nuffield_tier.toLowerCase() as "gold" | "silver" | "bronze" | "incomplete"}
+                className="mt-2"
+              />
+            )}
+          </div>
+          <div className="flex flex-col items-center justify-center">
+            {bupaWins ? (
+              <TrendingDown className="h-8 w-8 text-[var(--danger)]" />
+            ) : nuffieldWins ? (
+              <TrendingUp className="h-8 w-8 text-[var(--success)]" />
+            ) : (
+              <Equal className="h-8 w-8 text-[var(--text-muted)]" />
+            )}
+            <span className={`text-sm font-medium mt-1 ${
+              bupaWins ? "text-[var(--danger)]" : nuffieldWins ? "text-[var(--success)]" : "text-[var(--text-muted)]"
+            }`}>
+              {bupaWins ? `BUPA +${scoreDelta.toFixed(1)}` : nuffieldWins ? `Nuffield +${Math.abs(scoreDelta).toFixed(1)}` : "Tie"}
+            </span>
+          </div>
+          <div className="rounded-lg bg-[var(--bg-secondary)] p-4">
+            <p className="text-xs text-[var(--text-muted)] mb-1">BUPA (adjusted)</p>
+            <p className="text-2xl font-bold font-mono text-[var(--warning)]">
+              {comparison.bupa_adjusted_score?.toFixed(1) ?? "N/A"}
+            </p>
+            {comparison.bupa_tier && (
+              <TierBadge
+                tier={comparison.bupa_tier.toLowerCase() as "gold" | "silver" | "bronze" | "incomplete"}
+                className="mt-2"
+              />
+            )}
+          </div>
+        </div>
+
+        {comparison.bupa_profile_url && (
+          <a
+            href={comparison.bupa_profile_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 text-sm text-[var(--sensai-teal)] hover:underline"
+          >
+            View BUPA Profile <ArrowUpRight className="h-3.5 w-3.5" />
+          </a>
+        )}
+      </GlassCard>
+
+      {/* Dimension-by-Dimension Comparison */}
+      {comparison.dimensions.length > 0 && (
+        <GlassCard className="lg:col-span-2">
+          <h3 className="text-h3 text-[var(--text-primary)] mb-4">Field-by-Field Comparison</h3>
+          <div className="space-y-2">
+            {comparison.dimensions.map((dim) => (
+              <DimensionRow key={dim.dimension} dim={dim} />
+            ))}
+          </div>
+        </GlassCard>
+      )}
+    </div>
+  );
+}
+
+function DimensionRow({ dim }: { dim: DimensionComparison }) {
+  const winnerIcon = dim.winner === "nuffield" ? (
+    <CheckCircle className="h-4 w-4 text-[var(--success)]" />
+  ) : dim.winner === "bupa" ? (
+    <XCircle className="h-4 w-4 text-[var(--danger)]" />
+  ) : dim.winner === "tie" ? (
+    <Equal className="h-4 w-4 text-[var(--text-muted)]" />
+  ) : null;
+
+  return (
+    <div className="flex items-center gap-3 rounded-lg bg-[var(--bg-secondary)] px-4 py-3">
+      <div className="w-5 shrink-0">{winnerIcon}</div>
+      <div className="flex-1 min-w-0">
+        <span className="text-sm font-medium text-[var(--text-primary)]">{dim.label}</span>
+      </div>
+      <div className="flex items-center gap-6 text-sm">
+        <div className="text-right w-24">
+          <span className="text-xs text-[var(--text-muted)] block">Nuffield</span>
+          <span className={`font-mono ${dim.winner === "nuffield" ? "text-[var(--success)]" : "text-[var(--text-secondary)]"}`}>
+            {formatDimensionValue(dim.nuffield_value)}
+          </span>
+        </div>
+        <div className="text-right w-24">
+          <span className="text-xs text-[var(--text-muted)] block">BUPA</span>
+          <span className={`font-mono ${dim.winner === "bupa" ? "text-[var(--warning)]" : "text-[var(--text-secondary)]"}`}>
+            {formatDimensionValue(dim.bupa_value)}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function formatDimensionValue(value: string | number | boolean | null): string {
+  if (value === null) return "N/A";
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (typeof value === "number") return String(value);
+  return value;
 }
 
 // ========== Raw Data Tab ==========

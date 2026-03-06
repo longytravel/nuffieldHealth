@@ -3,6 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { db } from "@/db/index";
 import { consultants } from "@/db/schema";
 import { eq, and, like, sql, desc, asc, or } from "drizzle-orm";
+import type { QualityTier, BookingState } from "@/lib/types";
 import {
   getDashboardKPIs,
   getQualityTierDistribution,
@@ -93,7 +94,7 @@ const TOOLS: Anthropic.Tool[] = [
 
 // ── Tool execution ──
 
-function executeSearchConsultants(
+async function executeSearchConsultants(
   runId: string,
   params: {
     name?: string;
@@ -117,10 +118,10 @@ function executeSearchConsultants(
     conditions.push(like(consultants.hospital_name_primary, `%${params.hospital}%`));
   }
   if (params.quality_tier) {
-    conditions.push(eq(consultants.quality_tier, params.quality_tier));
+    conditions.push(eq(consultants.quality_tier, params.quality_tier as QualityTier));
   }
   if (params.booking_state) {
-    conditions.push(eq(consultants.booking_state, params.booking_state));
+    conditions.push(eq(consultants.booking_state, params.booking_state as BookingState));
   }
   if (params.has_photo !== undefined) {
     conditions.push(sql`${consultants.has_photo} = ${params.has_photo ? 1 : 0}`);
@@ -157,7 +158,7 @@ function executeSearchConsultants(
 
   const maxResults = Math.min(params.limit ?? 20, 50);
 
-  const rows = db
+  const rows = await db
     .select({
       consultant_name: consultants.consultant_name,
       slug: consultants.slug,
@@ -181,7 +182,7 @@ function executeSearchConsultants(
     .all();
 
   // Also get total count for the filter
-  const countRow = db
+  const countRow = await db
     .select({ count: sql<number>`count(*)` })
     .from(consultants)
     .where(and(...conditions))
@@ -194,7 +195,7 @@ function executeSearchConsultants(
   };
 }
 
-function executeGetConsultantDetail(
+async function executeGetConsultantDetail(
   runId: string,
   params: { slug?: string; name?: string }
 ) {
@@ -208,7 +209,7 @@ function executeGetConsultantDetail(
     return { error: "Provide either slug or name" };
   }
 
-  const row = db
+  const row = await db
     .select({
       consultant_name: consultants.consultant_name,
       consultant_title_prefix: consultants.consultant_title_prefix,
@@ -251,12 +252,12 @@ function executeGetConsultantDetail(
   return row;
 }
 
-function executeTool(runId: string, toolName: string, toolInput: Record<string, unknown>) {
+async function executeTool(runId: string, toolName: string, toolInput: Record<string, unknown>) {
   switch (toolName) {
     case "search_consultants":
-      return executeSearchConsultants(runId, toolInput);
+      return await executeSearchConsultants(runId, toolInput);
     case "get_consultant_detail":
-      return executeGetConsultantDetail(runId, toolInput as { slug?: string; name?: string });
+      return await executeGetConsultantDetail(runId, toolInput as { slug?: string; name?: string });
     default:
       return { error: `Unknown tool: ${toolName}` };
   }
@@ -265,11 +266,11 @@ function executeTool(runId: string, toolName: string, toolInput: Record<string, 
 // ── System prompt (summary data for general questions) ──
 
 async function buildSystemPrompt(runId: string): Promise<string> {
-  const kpis = getDashboardKPIs(runId);
+  const kpis = await getDashboardKPIs(runId);
   const tiers = await getQualityTierDistribution(runId);
-  const hospitals = getHospitalBenchmarks(runId);
-  const specialties = getSpecialtyAnalysis(runId);
-  const actions = getQuickActions(runId);
+  const hospitals = await getHospitalBenchmarks(runId);
+  const specialties = await getSpecialtyAnalysis(runId);
+  const actions = await getQuickActions(runId);
 
   const tierSummary = tiers
     .map((t) => `${t.quality_tier}: ${t.count}`)
@@ -287,7 +288,7 @@ async function buildSystemPrompt(runId: string): Promise<string> {
     .map((a) => `- ${a.description}: ${a.profilesAffected} profiles, +${a.potentialUplift} pts each, total impact +${a.totalImpact} pts`)
     .join("\n");
 
-  return `You are SensAI Copilot, an AI assistant for the SensAI Consultant Intelligence Platform.
+  return `You are an AI copilot for the Consultant Intelligence Platform.
 You help Nuffield Health stakeholders understand consultant profile quality data.
 
 You have access to the COMPLETE latest scrape run data, plus tools to query individual consultant records.
@@ -388,7 +389,7 @@ export async function POST(request: NextRequest) {
       const toolResults: Anthropic.ToolResultBlockParam[] = [];
       for (const block of response.content) {
         if (block.type === "tool_use") {
-          const result = executeTool(runId, block.name, block.input as Record<string, unknown>);
+          const result = await executeTool(runId, block.name, block.input as Record<string, unknown>);
           toolResults.push({
             type: "tool_result",
             tool_use_id: block.id,
