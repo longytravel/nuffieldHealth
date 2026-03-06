@@ -15,6 +15,13 @@
       "when": 1772284806431,
       "tag": "0001_yummy_martin_li",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1772829714957,
+      "tag": "0002_pale_power_man",
+      "breakpoints": true
     }
   ]
 }
