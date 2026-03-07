@@ -107,19 +107,30 @@ function computeBupaAdjusted(rawScore: number | null): number | null {
   return (rawScore / BUPA_ADJUSTED_DENOMINATOR) * 100;
 }
 
-// Get the latest completed BUPA run
+// Get the latest completed BUPA run.
+// Prefers full (non-pilot) runs; falls back to pilot if no full run exists.
 export async function getLatestBupaRun(includePilotRuns = false) {
   if (!(await hasBupaSchema())) return null;
 
   try {
+    // Try full runs first
+    const fullRun = await db
+      .select()
+      .from(bupaScrapeRuns)
+      .where(and(eq(bupaScrapeRuns.status, "completed"), excludePilotRuns()))
+      .orderBy(desc(bupaScrapeRuns.started_at))
+      .limit(1)
+      .then((rows) => rows[0] ?? null);
+
+    if (fullRun) return fullRun;
+
+    // Fall back to pilot runs if allowed and no full run exists
+    if (!includePilotRuns) return null;
+
     return await db
       .select()
       .from(bupaScrapeRuns)
-      .where(
-        includePilotRuns
-          ? eq(bupaScrapeRuns.status, "completed")
-          : and(eq(bupaScrapeRuns.status, "completed"), excludePilotRuns())
-      )
+      .where(eq(bupaScrapeRuns.status, "completed"))
       .orderBy(desc(bupaScrapeRuns.started_at))
       .limit(1)
       .then((rows) => rows[0] ?? null);
