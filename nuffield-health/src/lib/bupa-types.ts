@@ -142,3 +142,17 @@ export interface TopGap {
   gap: number;
   bupa_profile_url: string | null;
 }
+
+// Full matched pair for the all-consultants comparison table
+export interface MatchedPair {
+  nuffield_slug: string;
+  consultant_name: string | null;
+  specialty_primary: string[];
+  nuffield_adjusted: number;
+  nuffield_tier: QualityTier | null;
+  bupa_adjusted: number;
+  bupa_tier: QualityTier | null;
+  delta: number; // nuffield - bupa (positive = nuffield better)
+  winner: "nuffield" | "bupa" | "tie";
+  bupa_profile_url: string | null;
+}

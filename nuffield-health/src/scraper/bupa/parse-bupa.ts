@@ -130,12 +130,14 @@ const GMC_STANDALONE_REGEX = /\b([0-9]{6,8})\b/;
 const MAPPED_OVERVIEW_SECTION_KEYS = new Set([
   "about",
   "about_me",
+  "about_us",
   "biography",
   "profile",
   "overview",
   "specialties",
   "speciality",
   "specialty",
+  "specialises_in",
   "main_specialties",
   "primary_specialty",
   "sub_specialties",
@@ -144,16 +146,17 @@ const MAPPED_OVERVIEW_SECTION_KEYS = new Set([
   "treatments",
   "procedures",
   "treatments_and_procedures",
-  "treatments_and_procedures",
   "qualifications",
   "qualifications_and_credentials",
   "education_and_qualifications",
   "credentials",
+  "additional_training",
   "memberships",
   "affiliations_memberships",
   "professional_memberships",
   "memberships_and_associations",
   "professional_bodies",
+  "professional_bodies_positions_held_last_3_yrs",
   "clinical_interests",
   "special_interests",
   "areas_of_interest",
@@ -245,16 +248,18 @@ export function parseBupaProfile(
     "Procedures",
     "Treatments and procedures",
     "Treatments & procedures",
+    "Specialises in",
   ]);
   const normalizedTreatments = rawTreatments.length > 0 ? rawTreatments : extractListByHeading($, [
     "Treatments",
     "Procedures",
     "Treatments and procedures",
     "Treatments & procedures",
+    "Specialises in",
   ]);
 
   // --- Qualifications ---
-  const qualificationsCredentials = extractSectionText(sourceSections, [
+  const qualsPrimary = extractSectionText(sourceSections, [
     "Qualifications",
     "Qualifications and credentials",
     "Education and qualifications",
@@ -265,6 +270,13 @@ export function parseBupaProfile(
     "Education and qualifications",
     "Credentials",
   ]);
+  const qualsAdditional = extractSectionText(sourceSections, [
+    "Additional training",
+  ]);
+  const qualificationsCredentials = [qualsPrimary, qualsAdditional]
+    .filter(Boolean)
+    .join(" ")
+    .trim() || null;
 
   // --- Memberships ---
   const memberships = extractSectionList(sourceSections, [
@@ -273,6 +285,7 @@ export function parseBupaProfile(
     "Professional memberships",
     "Memberships and associations",
     "Professional bodies",
+    "Professional bodies (positions held - last 3 yrs)",
   ]);
   const normalizedMemberships = memberships.length > 0 ? memberships : extractListByHeading($, [
     "Memberships",
@@ -280,6 +293,7 @@ export function parseBupaProfile(
     "Professional memberships",
     "Memberships and associations",
     "Professional bodies",
+    "Professional bodies (positions held - last 3 yrs)",
   ]);
 
   // --- Clinical interests ---
@@ -555,7 +569,15 @@ function extractHospitals($: cheerio.CheerioAPI): string[] {
   ]);
   if (headingHospitals.length > 0) return headingHospitals;
 
-  // Strategy 2: CSS-based hospital list
+  // Strategy 2: BUPA map info — hospital links in #map-info-holder
+  const mapHospitals: string[] = [];
+  $('#map-info-holder .results a[href*="/Hospital/view/"]').each((_i, el) => {
+    const val = normalizeText($(el).text());
+    if (val) mapHospitals.push(val);
+  });
+  if (mapHospitals.length > 0) return dedupeStrings(mapHospitals);
+
+  // Strategy 3: CSS-based hospital list
   const classSelectors = [
     ".hospital-list li",
     ".consultant-hospitals li",

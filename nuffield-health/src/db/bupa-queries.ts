@@ -10,6 +10,7 @@ import type {
   ConsultantComparison,
   AggregateComparison,
   TopGap,
+  MatchedPair,
   DimensionComparison,
 } from "@/lib/bupa-types";
 import type { QualityTier } from "@/lib/types";
@@ -680,6 +681,98 @@ export async function getTopGaps(
     return gaps.slice(0, limit);
   } catch (error) {
     logBupaQueryError("getTopGaps", error);
+    return [];
+  }
+}
+
+// All matched pairs with both scores for comparison table
+export async function getAllMatchedPairs(
+  nuffieldRunId: string,
+  bupaRunId: string
+): Promise<MatchedPair[]> {
+  if (!(await hasBupaSchema())) return [];
+
+  try {
+    const matchedRows = dedupeMatchRows(
+      await db
+        .select({
+          nuffield_slug: consultantMatches.nuffield_slug,
+          bupa_id: consultantMatches.bupa_id,
+          match_confidence: consultantMatches.match_confidence,
+          matched_at: consultantMatches.matched_at,
+        })
+        .from(consultantMatches)
+        .innerJoin(
+          bupaConsultants,
+          and(
+            eq(bupaConsultants.bupa_id, consultantMatches.bupa_id),
+            eq(bupaConsultants.run_id, bupaRunId)
+          )
+        )
+    );
+
+    const pairs: MatchedPair[] = [];
+
+    for (const row of matchedRows) {
+      const [nRec, bRec] = await Promise.all([
+        db
+          .select()
+          .from(consultants)
+          .where(
+            and(
+              eq(consultants.slug, row.nuffield_slug),
+              eq(consultants.run_id, nuffieldRunId)
+            )
+          )
+          .limit(1)
+          .then((rows) => rows[0] ?? null),
+        db
+          .select()
+          .from(bupaConsultants)
+          .where(
+            and(
+              eq(bupaConsultants.bupa_id, row.bupa_id),
+              eq(bupaConsultants.run_id, bupaRunId)
+            )
+          )
+          .limit(1)
+          .then((rows) => rows[0] ?? null),
+      ]);
+
+      if (!nRec || !bRec) continue;
+
+      const nAdj = computeNuffieldAdjusted(nRec.profile_completeness_score, nRec.booking_state);
+      const bAdj = computeBupaAdjusted(bRec.profile_completeness_score);
+
+      if (nAdj == null || bAdj == null) continue;
+
+      const nAdjRound = Math.round(nAdj * 10) / 10;
+      const bAdjRound = Math.round(bAdj * 10) / 10;
+      const delta = Math.round((nAdj - bAdj) * 10) / 10;
+
+      let winner: "nuffield" | "bupa" | "tie";
+      if (delta > 2) winner = "nuffield";
+      else if (delta < -2) winner = "bupa";
+      else winner = "tie";
+
+      pairs.push({
+        nuffield_slug: row.nuffield_slug,
+        consultant_name: nRec.consultant_name,
+        specialty_primary: nRec.specialty_primary ?? [],
+        nuffield_adjusted: nAdjRound,
+        nuffield_tier: nRec.quality_tier as QualityTier | null,
+        bupa_adjusted: bAdjRound,
+        bupa_tier: bRec.quality_tier as QualityTier | null,
+        delta,
+        winner,
+        bupa_profile_url: bRec.profile_url,
+      });
+    }
+
+    pairs.sort((a, b) => a.delta - b.delta); // BUPA wins first
+    return pairs;
+  } catch (error) {
+    logBupaQueryError("getAllMatchedPairs", error);
     return [];
   }
 }

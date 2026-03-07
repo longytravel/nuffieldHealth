@@ -22,6 +22,7 @@ import {
   getBupaRunById,
   getAggregateComparison,
   getTopGaps,
+  getAllMatchedPairs,
 } from "@/db/bupa-queries";
 import { GlassCard } from "@/components/ui/glass-card";
 import { KpiCard } from "@/components/ui/kpi-card";
@@ -95,9 +96,10 @@ export default async function CompetitorPage({ searchParams }: PageProps) {
     );
   }
 
-  const [comparison, topGaps] = await Promise.all([
+  const [comparison, topGaps, allPairs] = await Promise.all([
     getAggregateComparison(nuffieldRun.run_id, bupaRun.run_id),
     getTopGaps(nuffieldRun.run_id, bupaRun.run_id, 20),
+    getAllMatchedPairs(nuffieldRun.run_id, bupaRun.run_id),
   ]);
 
   const totalCompared = comparison.bupa_better_count + comparison.nuffield_better_count + comparison.tie_count;
@@ -293,11 +295,11 @@ export default async function CompetitorPage({ searchParams }: PageProps) {
         </GlassCard>
       )}
 
-      {/* Top Gaps Table */}
-      {topGaps.length > 0 && (
+      {/* All Matched Consultants Table */}
+      {allPairs.length > 0 && (
         <GlassCard>
           <h3 className="text-h3 text-[var(--text-primary)] mb-4">
-            Top Gaps &mdash; Where BUPA Profiles Are Better
+            All Matched Consultants ({allPairs.length})
           </h3>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -306,59 +308,82 @@ export default async function CompetitorPage({ searchParams }: PageProps) {
                   <th className="pb-3 text-left text-xs font-medium text-[var(--text-muted)]">Consultant</th>
                   <th className="pb-3 text-left text-xs font-medium text-[var(--text-muted)]">Specialty</th>
                   <th className="pb-3 text-right text-xs font-medium text-[var(--text-muted)]">Nuffield</th>
+                  <th className="pb-3 text-center text-xs font-medium text-[var(--text-muted)]">N Tier</th>
                   <th className="pb-3 text-right text-xs font-medium text-[var(--text-muted)]">BUPA</th>
-                  <th className="pb-3 text-right text-xs font-medium text-[var(--text-muted)]">Gap</th>
-                  <th className="pb-3 text-right text-xs font-medium text-[var(--text-muted)]">Actions</th>
+                  <th className="pb-3 text-center text-xs font-medium text-[var(--text-muted)]">B Tier</th>
+                  <th className="pb-3 text-right text-xs font-medium text-[var(--text-muted)]">Delta</th>
+                  <th className="pb-3 text-right text-xs font-medium text-[var(--text-muted)]">Links</th>
                 </tr>
               </thead>
               <tbody>
-                {topGaps.map((gap) => (
-                  <tr key={gap.nuffield_slug} className="border-b border-[var(--border-subtle)]/50 hover:bg-[var(--bg-elevated)]/30">
-                    <td className="py-3">
-                      <Link
-                        href={profileHref(gap.nuffield_slug)}
-                        className="font-medium text-[var(--text-primary)] hover:text-[var(--sensai-teal)] transition-colors"
-                      >
-                        {gap.consultant_name ?? gap.nuffield_slug}
-                      </Link>
-                    </td>
-                    <td className="py-3 text-[var(--text-secondary)]">
-                      {gap.specialty_primary.slice(0, 2).join(", ") || "N/A"}
-                    </td>
-                    <td className="py-3 text-right font-mono text-[var(--text-primary)]">
-                      {gap.nuffield_adjusted.toFixed(1)}
-                    </td>
-                    <td className="py-3 text-right font-mono text-[var(--warning)]">
-                      {gap.bupa_adjusted.toFixed(1)}
-                    </td>
-                    <td className="py-3 text-right">
-                      <span className="inline-flex items-center gap-0.5 rounded-full bg-[var(--danger)]/15 px-2 py-0.5 text-xs font-medium text-[var(--danger)]">
-                        <TrendingDown className="h-3 w-3" />
-                        -{gap.gap.toFixed(1)}
-                      </span>
-                    </td>
-                    <td className="py-3 text-right">
-                      <div className="flex items-center justify-end gap-2">
+                {allPairs.map((pair) => {
+                  const deltaColor =
+                    pair.winner === "bupa"
+                      ? "text-[var(--danger)]"
+                      : pair.winner === "nuffield"
+                        ? "text-[var(--success)]"
+                        : "text-[var(--text-muted)]";
+                  const DeltaIcon =
+                    pair.winner === "bupa"
+                      ? TrendingDown
+                      : pair.winner === "nuffield"
+                        ? TrendingUp
+                        : Equal;
+
+                  return (
+                    <tr key={pair.nuffield_slug} className="border-b border-[var(--border-subtle)]/50 hover:bg-[var(--bg-elevated)]/30">
+                      <td className="py-2.5">
                         <Link
-                          href={profileHref(gap.nuffield_slug)}
-                          className="text-xs text-[var(--sensai-teal)] hover:underline"
+                          href={profileHref(pair.nuffield_slug)}
+                          className="font-medium text-[var(--text-primary)] hover:text-[var(--sensai-teal)] transition-colors"
                         >
-                          Profile
+                          {pair.consultant_name ?? pair.nuffield_slug}
                         </Link>
-                        {gap.bupa_profile_url && (
-                          <a
-                            href={gap.bupa_profile_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center gap-0.5 text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                      </td>
+                      <td className="py-2.5 text-[var(--text-secondary)] max-w-[180px] truncate">
+                        {pair.specialty_primary.slice(0, 2).join(", ") || "N/A"}
+                      </td>
+                      <td className="py-2.5 text-right font-mono text-[var(--text-primary)]">
+                        {pair.nuffield_adjusted.toFixed(1)}
+                      </td>
+                      <td className="py-2.5 text-center">
+                        <TierBadge tier={(pair.nuffield_tier ?? "Incomplete").toLowerCase() as "gold" | "silver" | "bronze" | "incomplete"} />
+                      </td>
+                      <td className="py-2.5 text-right font-mono text-[var(--warning)]">
+                        {pair.bupa_adjusted.toFixed(1)}
+                      </td>
+                      <td className="py-2.5 text-center">
+                        <TierBadge tier={(pair.bupa_tier ?? "Incomplete").toLowerCase() as "gold" | "silver" | "bronze" | "incomplete"} />
+                      </td>
+                      <td className="py-2.5 text-right">
+                        <span className={`inline-flex items-center gap-0.5 text-xs font-medium ${deltaColor}`}>
+                          <DeltaIcon className="h-3 w-3" />
+                          {pair.delta > 0 ? "+" : ""}{pair.delta.toFixed(1)}
+                        </span>
+                      </td>
+                      <td className="py-2.5 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <Link
+                            href={profileHref(pair.nuffield_slug)}
+                            className="text-xs text-[var(--sensai-teal)] hover:underline"
                           >
-                            BUPA <ArrowUpRight className="h-3 w-3" />
-                          </a>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                            Profile
+                          </Link>
+                          {pair.bupa_profile_url && (
+                            <a
+                              href={pair.bupa_profile_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-0.5 text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                            >
+                              BUPA <ArrowUpRight className="h-3 w-3" />
+                            </a>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
