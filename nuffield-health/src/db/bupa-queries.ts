@@ -18,7 +18,6 @@ import { SCORE_WEIGHTS, BUPA_UNAVAILABLE_POINTS } from "@/lib/config";
 const MAX_BOOKING_POINTS = SCORE_WEIGHTS.booking_with_slots; // 10
 const NUFFIELD_ADJUSTED_DENOMINATOR = 100 - MAX_BOOKING_POINTS; // 90
 const BUPA_ADJUSTED_DENOMINATOR = 100 - BUPA_UNAVAILABLE_POINTS; // 70
-const REQUIRED_BUPA_TABLE_COUNT = 3;
 const MATCH_CONFIDENCE_RANK: Record<string, number> = {
   high: 3,
   medium: 2,
@@ -32,25 +31,23 @@ function excludePilotRuns() {
 }
 
 async function hasBupaSchema(): Promise<boolean> {
-  if (bupaSchemaAvailable !== null) {
-    return bupaSchemaAvailable;
+  if (bupaSchemaAvailable === true) {
+    return true;
   }
 
+  // Don't cache failures — a transient error shouldn't permanently disable BUPA queries
   try {
-    const rows = await db.all<{ name: string }>(sql`
-      SELECT name
-      FROM sqlite_master
-      WHERE type = 'table'
-        AND name IN ('bupa_scrape_runs', 'bupa_consultants', 'consultant_matches')
-    `);
+    await db
+      .select({ run_id: bupaScrapeRuns.run_id })
+      .from(bupaScrapeRuns)
+      .limit(1);
 
-    bupaSchemaAvailable = rows.length === REQUIRED_BUPA_TABLE_COUNT;
-  } catch (error) {
-    console.warn("[BUPA DB] Failed to inspect schema availability", error);
-    bupaSchemaAvailable = false;
+    bupaSchemaAvailable = true;
+    return true;
+  } catch {
+    // Table doesn't exist or query failed — not cached so next request retries
+    return false;
   }
-
-  return bupaSchemaAvailable;
 }
 
 function logBupaQueryError(scope: string, error: unknown) {
