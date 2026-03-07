@@ -84,5 +84,5 @@ npx tsx src/scraper/run.ts --slug mr-nigel-dsouza   # Single profile
 - Build: Complete (scraper pipeline + dashboard + AI copilot + reports)
 - Dashboard: All SensAI branding removed, now "Consultant Intelligence" (unbranded)
 - Testing: Round 1 live scrape completed, 7 bugs found and fixed
-- Vercel: Static pages work; DB pages show "Demo Mode" (SQLite incompatible with serverless)
-- Next: Database upgrade to Turso for production Vercel deployment
+- Vercel: Live with Turso (libsql HTTP) — all pages functional
+- Database: Turso (production/Vercel), better-sqlite3 (local dev/scraper)
