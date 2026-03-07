@@ -15,6 +15,7 @@ import {
   CameraOff,
   AlertTriangle,
   AlertCircle,
+  Swords,
 } from "lucide-react";
 
 interface ConsultantFiltersBarProps {
@@ -35,6 +36,7 @@ interface ConsultantFiltersBarProps {
   score_min?: string;
   score_max?: string;
   specialty?: string;
+  bupa_match?: string;
 }
 
 const BOOKING_LABELS: Record<string, string> = {
@@ -68,6 +70,7 @@ export function ConsultantFiltersBar({
   score_min,
   score_max,
   specialty,
+  bupa_match,
 }: ConsultantFiltersBarProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -111,6 +114,7 @@ export function ConsultantFiltersBar({
   if (score_min) activeFilters.push({ key: "score_min", label: `Score >= ${score_min}` });
   if (score_max) activeFilters.push({ key: "score_max", label: `Score <= ${score_max}` });
   if (search) activeFilters.push({ key: "search", label: `Search: ${search}` });
+  if (bupa_match === "true") activeFilters.push({ key: "bupa_match", label: "BUPA Match" });
 
   return (
     <div className="w-full shrink-0 space-y-4 2xl:w-[280px]">
@@ -154,6 +158,26 @@ export function ConsultantFiltersBar({
           />
         </div>
       </GlassCard>
+
+      {/* BUPA Competitor Match */}
+      {filterCounts.bupa_match_count > 0 && (
+        <GlassCard className="p-0 overflow-hidden">
+          <button
+            onClick={() => updateParams({ bupa_match: bupa_match === "true" ? null : "true" })}
+            className={`flex w-full items-center justify-between px-4 py-3 text-sm font-medium transition-colors ${
+              bupa_match === "true"
+                ? "bg-[var(--bg-elevated)] text-[var(--text-primary)]"
+                : "text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]/30"
+            }`}
+          >
+            <span className="flex items-center gap-2">
+              <Swords className="h-4 w-4 text-orange-400" />
+              BUPA Matches
+            </span>
+            <span className="text-xs text-[var(--text-muted)] tabular-nums">{filterCounts.bupa_match_count}</span>
+          </button>
+        </GlassCard>
+      )}
 
       {/* Quality Tier */}
       <FilterGroup title="Quality Tier" defaultOpen>

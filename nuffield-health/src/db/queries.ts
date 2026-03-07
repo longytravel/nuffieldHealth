@@ -1,5 +1,5 @@
 import { db } from "./index";
-import { scrapeRuns, consultants, profileRewrites, researchSources, consultantPhotos } from "./schema";
+import { scrapeRuns, consultants, profileRewrites, researchSources, consultantPhotos, consultantMatches } from "./schema";
 import { eq, desc, and, sql, like, or, asc } from "drizzle-orm";
 import type { ConsultantFilters, FilterCounts, BenchmarkProfile, RewriteStatus } from "@/lib/types";
 
@@ -128,6 +128,12 @@ function buildFilterConditions(runId: string, filters?: ConsultantFilters) {
   if (filters?.specialty) {
     conditions.push(
       sql`EXISTS (SELECT 1 FROM json_each(${consultants.specialty_primary}) WHERE value = ${filters.specialty})`
+    );
+  }
+
+  if (filters?.bupa_match) {
+    conditions.push(
+      sql`EXISTS (SELECT 1 FROM ${consultantMatches} WHERE ${consultantMatches.nuffield_slug} = ${consultants.slug})`
     );
   }
 
@@ -405,7 +411,7 @@ export async function getConsultantCount(runId: string, filters?: ConsultantFilt
 export async function getFilterCounts(runId: string): Promise<FilterCounts> {
   const baseCondition = eq(consultants.run_id, runId);
 
-  const [tierRows, bookingRows, hospitalRows, specialtyRows, bioRows, photoRows, flagRows, actionGapRow] = await Promise.all([
+  const [tierRows, bookingRows, hospitalRows, specialtyRows, bioRows, photoRows, flagRows, actionGapRow, bupaMatchCountRow] = await Promise.all([
     db.select({
       quality_tier: consultants.quality_tier,
       count: sql<number>`count(*)`.as("count"),
@@ -474,6 +480,16 @@ export async function getFilterCounts(runId: string): Promise<FilterCounts> {
       .from(consultants)
       .where(baseCondition)
       .get(),
+
+    db.select({
+      count: sql<number>`count(DISTINCT ${consultantMatches.nuffield_slug})`.as("count"),
+    })
+      .from(consultantMatches)
+      .innerJoin(consultants, and(
+        eq(consultants.slug, consultantMatches.nuffield_slug),
+        baseCondition
+      ))
+      .get(),
   ]);
 
   const tiers: Record<string, number> = {};
@@ -518,6 +534,7 @@ export async function getFilterCounts(runId: string): Promise<FilterCounts> {
     bio_depths,
     photo: { has: photoHas, missing: photoMissing },
     flags,
+    bupa_match_count: bupaMatchCountRow?.count ?? 0,
     action_gaps: {
       bio_needs_expansion: actionGapRow?.bio_needs_expansion ?? 0,
       missing_insurers: actionGapRow?.missing_insurers ?? 0,

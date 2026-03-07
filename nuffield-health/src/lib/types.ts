@@ -70,6 +70,7 @@ export interface ConsultantFilters {
   missing_memberships?: boolean;
   score_min?: number;
   score_max?: number;
+  bupa_match?: boolean;
   sort_by?: string;
   sort_dir?: "asc" | "desc";
 }
@@ -201,6 +202,7 @@ export interface FilterCounts {
   bio_depths: Record<string, number>;
   photo: { has: number; missing: number };
   flags: { fail: number; warn: number };
+  bupa_match_count: number;
   action_gaps: {
     bio_needs_expansion: number;
     missing_insurers: number;

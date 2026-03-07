@@ -47,6 +47,7 @@ export default async function ConsultantsPage({ searchParams }: PageProps) {
   const score_min = str("score_min") ? Number(str("score_min")) : undefined;
   const score_max = str("score_max") ? Number(str("score_max")) : undefined;
   const specialty = str("specialty");
+  const bupa_match = str("bupa_match") === "true" ? true : undefined;
   const sort_by = str("sort_by");
   const sort_dir = str("sort_dir") as "asc" | "desc" | undefined;
   const page = typeof params.page === "string" ? Math.max(1, parseInt(params.page, 10) || 1) : 1;
@@ -68,6 +69,7 @@ export default async function ConsultantsPage({ searchParams }: PageProps) {
     score_min: score_min !== undefined && !isNaN(score_min) ? score_min : undefined,
     score_max: score_max !== undefined && !isNaN(score_max) ? score_max : undefined,
     specialty,
+    bupa_match,
     sort_by,
     sort_dir,
     page,
@@ -122,6 +124,7 @@ export default async function ConsultantsPage({ searchParams }: PageProps) {
           score_min={str("score_min")}
           score_max={str("score_max")}
           specialty={specialty}
+          bupa_match={str("bupa_match")}
         />
 
         {/* Data Grid */}
