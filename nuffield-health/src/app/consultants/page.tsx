@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { getLatestRun, getConsultants, getConsultantCount, getFilterCounts } from "@/db/queries";
+import { getBupaMatchedSlugs } from "@/db/bupa-queries";
 import type { ConsultantFilters, QualityTier, BookingState, BioDepth } from "@/lib/types";
 import { ConsultantFiltersBar } from "./components/consultant-filters";
 import { ConsultantTable } from "./components/consultant-table";
@@ -79,6 +80,7 @@ export default async function ConsultantsPage({ searchParams }: PageProps) {
     getFilterCounts(run.run_id),
   ]);
 
+  const bupaMatchedSlugs = await getBupaMatchedSlugs(consultantRows.map((c) => c.slug));
   const totalPages = Math.ceil(totalCount / 50);
 
   return (
@@ -140,6 +142,7 @@ export default async function ConsultantsPage({ searchParams }: PageProps) {
               totalCount={totalCount}
               sortBy={sort_by}
               sortDir={sort_dir}
+              bupaMatchedSlugs={[...bupaMatchedSlugs]}
             />
           )}
         </div>

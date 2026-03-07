@@ -1,4 +1,4 @@
-import type { QualityTier, BioDepth } from "./types";
+import type { QualityTier } from "./types";
 
 // Match method used to link Nuffield consultant to BUPA profile
 export type MatchMethod = "sitemap" | "name_search" | "gmc_match";
@@ -18,6 +18,11 @@ export type BupaScrapeStatus =
 // BUPA run status
 export type BupaRunStatus = "running" | "completed" | "failed";
 
+export interface BupaSectionData {
+  heading: string;
+  values: string[];
+}
+
 // Result from parsing a BUPA profile page
 export interface BupaParseResult {
   bupa_id: string;
@@ -36,6 +41,12 @@ export interface BupaParseResult {
   languages: string[];
   hospital_affiliations: string[];
   fee_assured: boolean;
+  contact_phone_numbers: string[];
+  contact_email_addresses: string[];
+  website_urls: string[];
+  accreditation_badges: string[];
+  source_sections: Record<string, BupaSectionData>;
+  unmapped_section_keys: string[];
 }
 
 // Candidate from sitemap or search for matching

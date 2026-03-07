@@ -2,13 +2,18 @@ import { randomUUID } from "crypto";
 import { db } from "@/db/index";
 import { bupaScrapeRuns, bupaConsultants, consultantMatches } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
-import { fetchBupaSitemapUrls, matchConsultants } from "./discover-bupa";
+import {
+  fetchBupaSitemapUrls,
+  matchConsultants,
+  normalizeRegistrationNumber,
+  persistConsultantMatches,
+} from "./discover-bupa";
 import { launchBupaBrowser, fetchBupaProfile, applyBupaScrapeDelay } from "./crawl-bupa";
 import { parseBupaProfile } from "./parse-bupa";
 import { assessProfile } from "../assess";
 import { scoreConsultant } from "../score";
 import { logger } from "@/lib/logger";
-import { SCORE_WEIGHTS } from "@/lib/config";
+import { SCORE_WEIGHTS, BUPA_UNAVAILABLE_POINTS } from "@/lib/config";
 import type { BupaScrapeStatus } from "@/lib/bupa-types";
 import type { BookingState } from "@/lib/types";
 import { getLatestRun } from "@/db/queries";
@@ -22,7 +27,14 @@ interface CliArgs {
   discoverOnly: boolean;
   limit: number | null;
   skipAssess: boolean;
+  pilot: boolean;
 }
+
+const MATCH_CONFIDENCE_ORDER: Record<string, number> = {
+  high: 0,
+  medium: 1,
+  low: 2,
+};
 
 function parseCliArgs(): CliArgs {
   const args = process.argv.slice(2);
@@ -31,6 +43,7 @@ function parseCliArgs(): CliArgs {
   let discoverOnly = false;
   let limit: number | null = null;
   let skipAssess = false;
+  let pilot = false;
 
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--resume") {
@@ -45,10 +58,12 @@ function parseCliArgs(): CliArgs {
       i++;
     } else if (args[i] === "--skip-assess") {
       skipAssess = true;
+    } else if (args[i] === "--pilot") {
+      pilot = true;
     }
   }
 
-  return { resume, slug, discoverOnly, limit, skipAssess };
+  return { resume, slug, discoverOnly, limit, skipAssess, pilot };
 }
 
 // ── Database helpers ──────────────────────────────────────────────────────────
@@ -95,6 +110,11 @@ async function findLatestIncompleteBupaRun(): Promise<string | null> {
   return row?.run_id ?? null;
 }
 
+function buildBupaRunId(pilot: boolean): string {
+  const suffix = randomUUID();
+  return pilot ? `pilot-${new Date().toISOString().replace(/[:.]/g, "-")}-${suffix}` : suffix;
+}
+
 async function upsertBupaConsultant(runId: string, bupaId: string, data: Record<string, unknown>): Promise<void> {
   const existing = await db.select()
     .from(bupaConsultants)
@@ -135,7 +155,7 @@ const MAX_BOOKING_POINTS = SCORE_WEIGHTS.booking_with_slots; // 10
 
 function computeAdjustedScore(rawScore: number, bookingPointsEarned: number): number {
   const scoreWithoutBooking = rawScore - bookingPointsEarned;
-  const maxWithoutBooking = 100 - MAX_BOOKING_POINTS; // 90
+  const maxWithoutBooking = 100 - BUPA_UNAVAILABLE_POINTS; // 70
   return Math.round((scoreWithoutBooking / maxWithoutBooking) * 100 * 10) / 10;
 }
 
@@ -156,10 +176,20 @@ function shouldSkipStage(currentStatus: BupaScrapeStatus | null, targetStage: Bu
 // ── Main pipeline ────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
-  const { resume, slug: singleSlug, discoverOnly, limit, skipAssess } = parseCliArgs();
+  const { resume, slug: singleSlug, discoverOnly, limit, skipAssess, pilot } = parseCliArgs();
+
+  if (resume && pilot) {
+    logger.error("BUPA", "init", "error", "--resume cannot be combined with --pilot");
+    process.exit(1);
+  }
 
   const modeDesc = resume ? "resume mode" : singleSlug ? `single: ${singleSlug}` : "full run";
-  const flags = [discoverOnly && "discover-only", skipAssess && "skip-assess", limit && `limit=${limit}`].filter(Boolean).join(", ");
+  const flags = [
+    discoverOnly && "discover-only",
+    skipAssess && "skip-assess",
+    pilot && "pilot",
+    limit && `limit=${limit}`,
+  ].filter(Boolean).join(", ");
   logger.info("BUPA", "init", "starting", flags ? `${modeDesc} (${flags})` : modeDesc);
 
   // Get latest Nuffield run for matching
@@ -177,7 +207,9 @@ async function main(): Promise<void> {
 
   // Step 2: Match candidates against Nuffield DB
   logger.info("BUPA", "match", "starting", "Matching against Nuffield consultants...");
-  const matches = await matchConsultants(candidates, nuffieldRun.run_id);
+  const matches = await matchConsultants(candidates, nuffieldRun.run_id, {
+    persist: false,
+  });
   logger.info("BUPA", "match", "done", `${matches.length} matches found from ${candidates.length} candidates`);
 
   if (discoverOnly) {
@@ -199,11 +231,23 @@ async function main(): Promise<void> {
     }
   }
 
+  matchesToProcess = [...matchesToProcess].sort((left, right) => {
+    const confidenceDelta =
+      (MATCH_CONFIDENCE_ORDER[left.match_confidence] ?? 99) -
+      (MATCH_CONFIDENCE_ORDER[right.match_confidence] ?? 99);
+    if (confidenceDelta !== 0) return confidenceDelta;
+    return left.nuffield_slug.localeCompare(right.nuffield_slug);
+  });
+
   if (limit && limit > 0 && matchesToProcess.length > limit) {
     const fullCount = matchesToProcess.length;
     matchesToProcess = matchesToProcess.slice(0, limit);
     logger.info("BUPA", "init", "limited", `capped to ${limit} of ${fullCount} matches`);
   }
+
+  await persistConsultantMatches(matchesToProcess, {
+    clearSlugs: matchesToProcess.map((match) => match.nuffield_slug),
+  });
 
   // Create or resume run
   let runId: string;
@@ -216,7 +260,7 @@ async function main(): Promise<void> {
     runId = existingRunId;
     logger.info("BUPA", "init", "resuming", `run_id=${runId}`);
   } else {
-    runId = randomUUID();
+    runId = buildBupaRunId(pilot);
     await createBupaRun(runId, matchesToProcess.length);
   }
 
@@ -312,18 +356,77 @@ async function main(): Promise<void> {
               languages: parsed.languages,
               hospital_affiliations: parsed.hospital_affiliations,
               fee_assured: parsed.fee_assured,
+              contact_phone_numbers: parsed.contact_phone_numbers,
+              contact_email_addresses: parsed.contact_email_addresses,
+              website_urls: parsed.website_urls,
+              accreditation_badges: parsed.accreditation_badges,
+              source_sections: parsed.source_sections,
+              unmapped_section_keys: parsed.unmapped_section_keys,
               scrape_status: "parse_done",
             });
 
-            // If we found a GMC number and the match was name-based, upgrade the match
-            if (parsed.registration_number && match.match_method !== "gmc_match") {
+            const expectedRegistration = normalizeRegistrationNumber(match.registration_number);
+            const parsedRegistration = normalizeRegistrationNumber(parsed.registration_number);
+
+            if (
+              expectedRegistration &&
+              parsedRegistration &&
+              expectedRegistration !== parsedRegistration
+            ) {
+              logger.warn(
+                "BUPA",
+                bupaId,
+                "reg-mismatch",
+                `nuffield=${expectedRegistration}, bupa=${parsedRegistration}`,
+                progress
+              );
+
+              await db.delete(consultantMatches)
+                .where(
+                  and(
+                    eq(consultantMatches.nuffield_slug, match.nuffield_slug),
+                    eq(consultantMatches.bupa_id, bupaId)
+                  )
+                )
+                .run();
+
+              await db.delete(bupaConsultants)
+                .where(and(eq(bupaConsultants.run_id, runId), eq(bupaConsultants.bupa_id, bupaId)))
+                .run();
+
+              errorCount++;
+              continue;
+            }
+
+            if (
+              parsedRegistration &&
+              match.match_method !== "gmc_match" &&
+              expectedRegistration === parsedRegistration
+            ) {
               await db.update(consultantMatches)
                 .set({
                   registration_number: parsed.registration_number,
                   match_confidence: "high",
                   match_method: "gmc_match",
                 })
-                .where(eq(consultantMatches.match_id, match.nuffield_slug + ":" + match.bupa_id))
+                .where(
+                  and(
+                    eq(consultantMatches.nuffield_slug, match.nuffield_slug),
+                    eq(consultantMatches.bupa_id, bupaId)
+                  )
+                )
+                .run();
+            } else if (parsedRegistration) {
+              await db.update(consultantMatches)
+                .set({
+                  registration_number: parsed.registration_number,
+                })
+                .where(
+                  and(
+                    eq(consultantMatches.nuffield_slug, match.nuffield_slug),
+                    eq(consultantMatches.bupa_id, bupaId)
+                  )
+                )
                 .run();
             }
 

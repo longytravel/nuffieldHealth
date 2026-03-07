@@ -57,7 +57,7 @@ function useScreenSize(): ScreenSize {
   useEffect(() => {
     function update() {
       if (window.innerWidth < 768) setSize("mobile");
-      else if (window.innerWidth < 1024) setSize("tablet");
+      else if (window.innerWidth < 1280) setSize("tablet");
       else setSize("desktop");
     }
     update();
@@ -136,9 +136,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       ) : (
         <motion.main
           id="main-content"
-          animate={{ paddingLeft: collapsed ? 80 : 256 }}
+          animate={{ marginLeft: collapsed ? 80 : 256 }}
           transition={sidebarSpring}
-          className="min-w-0 flex-1 overflow-x-clip pb-6 pr-4 pt-6 md:pb-8 md:pr-6 md:pt-8 lg:pb-8 lg:pr-8 lg:pt-8"
+          className="min-w-0 flex-1 overflow-x-visible px-4 pb-6 pt-6 md:px-6 md:pb-8 md:pt-8 lg:px-8 lg:pb-8 lg:pt-8"
         >
           {children}
         </motion.main>

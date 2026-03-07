@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { TierBadge } from "@/components/ui/tier-badge";
 import { GlassCard } from "@/components/ui/glass-card";
 import { RewriteButton } from "@/components/ui/rewrite-button";
-import { ArrowUpDown, ArrowUp, ArrowDown, Eye, Wand2 } from "lucide-react";
+import { ArrowUpDown, ArrowUp, ArrowDown, Eye, Wand2, Swords } from "lucide-react";
 
 interface ConsultantRow {
   slug: string;
@@ -32,6 +32,7 @@ interface ConsultantTableProps {
   totalCount: number;
   sortBy?: string;
   sortDir?: string;
+  bupaMatchedSlugs?: string[];
 }
 
 const BOOKING_LABELS: Record<string, { label: string; color: string }> = {
@@ -47,7 +48,9 @@ export function ConsultantTable({
   totalCount,
   sortBy,
   sortDir,
+  bupaMatchedSlugs,
 }: ConsultantTableProps) {
+  const bupaMatchSet = new Set(bupaMatchedSlugs ?? []);
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -211,13 +214,20 @@ export function ConsultantTable({
                           {(c.consultant_name ?? c.slug).charAt(0).toUpperCase()}
                         </div>
                         <div className="min-w-0">
-                          <Link
-                            href={`/consultants/${c.slug}`}
-                            className="text-sm font-medium text-[var(--text-primary)] hover:text-[var(--sensai-teal)] transition-colors truncate block"
-                          >
-                            {shouldPrefixName ? `${c.consultant_title_prefix} ` : ""}
-                            {displayName}
-                          </Link>
+                          <div className="flex items-center gap-1.5">
+                            <Link
+                              href={`/consultants/${c.slug}`}
+                              className="text-sm font-medium text-[var(--text-primary)] hover:text-[var(--sensai-teal)] transition-colors truncate"
+                            >
+                              {shouldPrefixName ? `${c.consultant_title_prefix} ` : ""}
+                              {displayName}
+                            </Link>
+                            {bupaMatchSet.has(c.slug) && (
+                              <span title="BUPA match">
+                                <Swords className="h-3.5 w-3.5 shrink-0 text-[var(--warning)]" />
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </td>

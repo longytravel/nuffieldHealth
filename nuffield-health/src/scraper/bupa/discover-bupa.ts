@@ -1,6 +1,6 @@
-import { gunzipSync } from "zlib";
-import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
+import { gunzipSync } from "zlib";
+import { eq, inArray } from "drizzle-orm";
 import { db } from "@/db/index";
 import { consultants, consultantMatches } from "@/db/schema";
 import { logger } from "@/lib/logger";
@@ -9,6 +9,31 @@ import type { BupaCandidate, ConsultantMatch } from "@/lib/bupa-types";
 const SITEMAP_INDEX_GZ = "https://www.finder.bupa.co.uk/sitemap_index.xml.gz";
 const SITEMAP_FALLBACK = "https://www.finder.bupa.co.uk/sitemap.xml";
 const CONSULTANT_URL_PATTERN = /\/Consultant\/view\/(\d+)\/([^/\s<]+)/;
+const MATCH_DELETE_CHUNK_SIZE = 400;
+
+interface MatchConsultantOptions {
+  persist?: boolean;
+}
+
+interface PersistMatchOptions {
+  clearSlugs?: string[];
+}
+
+interface MatchableNuffieldConsultant {
+  slug: string;
+  consultant_name: string | null;
+  registration_number: string | null;
+  specialty_primary: string[];
+  normalized_name: string | null;
+  core_signature: string | null;
+  loose_signature: string | null;
+}
+
+interface MatchableBupaCandidate extends BupaCandidate {
+  normalized_name: string;
+  core_signature: string | null;
+  loose_signature: string | null;
+}
 
 /**
  * Fetch and parse BUPA sitemap(s) to discover consultant profile URLs.
@@ -26,7 +51,6 @@ export async function fetchBupaSitemapUrls(): Promise<BupaCandidate[]> {
     logger.info("BUPA_DISC", "sitemap", "fetched", "sitemap.xml");
   }
 
-  // If this is a sitemap index, extract child sitemap URLs and fetch them
   const childSitemapUrls = extractLocUrls(xml).filter(
     (url) => url.endsWith(".xml") || url.endsWith(".xml.gz")
   );
@@ -45,14 +69,11 @@ export async function fetchBupaSitemapUrls(): Promise<BupaCandidate[]> {
     }
   }
 
-  // Extract consultant URLs from all collected XML
   const candidates = extractConsultantCandidates(allXml);
-
-  // Deduplicate by bupa_id
   const seen = new Set<string>();
-  const unique = candidates.filter((c) => {
-    if (seen.has(c.bupa_id)) return false;
-    seen.add(c.bupa_id);
+  const unique = candidates.filter((candidate) => {
+    if (seen.has(candidate.bupa_id)) return false;
+    seen.add(candidate.bupa_id);
     return true;
   });
 
@@ -61,15 +82,18 @@ export async function fetchBupaSitemapUrls(): Promise<BupaCandidate[]> {
 }
 
 /**
- * Match BUPA candidates against Nuffield consultant database.
- * Uses three signals: GMC match (high), exact name (medium), fuzzy name (low).
+ * Match BUPA candidates against the current Nuffield run.
+ * Pre-crawl matching is name-based only, so the runner later validates with GMC
+ * once the target BUPA page has been parsed.
  */
 export async function matchConsultants(
   candidates: BupaCandidate[],
-  nuffieldRunId: string
+  nuffieldRunId: string,
+  options: MatchConsultantOptions = {}
 ): Promise<ConsultantMatch[]> {
-  // Load all Nuffield consultants from the specified run
-  const nuffieldConsultants = await db
+  const { persist = true } = options;
+
+  const rawNuffieldConsultants = await db
     .select({
       slug: consultants.slug,
       consultant_name: consultants.consultant_name,
@@ -79,81 +103,146 @@ export async function matchConsultants(
     .from(consultants)
     .where(eq(consultants.run_id, nuffieldRunId));
 
+  const nuffieldConsultants: MatchableNuffieldConsultant[] = rawNuffieldConsultants.map((consultant) => {
+    const normalized_name = consultant.consultant_name
+      ? normalizeNameForMatching(consultant.consultant_name)
+      : null;
+
+    return {
+      ...consultant,
+      normalized_name,
+      core_signature: normalized_name ? buildCoreNameSignature(normalized_name) : null,
+      loose_signature: normalized_name ? buildLooseNameSignature(normalized_name) : null,
+    };
+  });
+
+  const preparedCandidates: MatchableBupaCandidate[] = candidates.map((candidate) => {
+    const normalized_name = normalizeNameForMatching(candidate.name_from_url);
+
+    return {
+      ...candidate,
+      normalized_name,
+      core_signature: buildCoreNameSignature(normalized_name),
+      loose_signature: buildLooseNameSignature(normalized_name),
+    };
+  });
+
   logger.info("BUPA_DISC", "match", "loaded", `${nuffieldConsultants.length} Nuffield consultants`);
 
-  // Build lookup indices
-  const byRegNumber = new Map<string, typeof nuffieldConsultants[number][]>();
-  const byNormalizedName = new Map<string, typeof nuffieldConsultants[number][]>();
+  const byNormalizedName = new Map<string, MatchableBupaCandidate[]>();
+  const byCoreSignature = new Map<string, MatchableBupaCandidate[]>();
+  const byLooseSignature = new Map<string, MatchableBupaCandidate[]>();
 
-  for (const nc of nuffieldConsultants) {
-    if (nc.registration_number) {
-      const key = nc.registration_number.toLowerCase().trim();
-      if (!byRegNumber.has(key)) byRegNumber.set(key, []);
-      byRegNumber.get(key)!.push(nc);
+  for (const candidate of preparedCandidates) {
+    if (!byNormalizedName.has(candidate.normalized_name)) {
+      byNormalizedName.set(candidate.normalized_name, []);
     }
-    if (nc.consultant_name) {
-      const key = normalizeNameForMatching(nc.consultant_name);
-      if (!byNormalizedName.has(key)) byNormalizedName.set(key, []);
-      byNormalizedName.get(key)!.push(nc);
+    byNormalizedName.get(candidate.normalized_name)!.push(candidate);
+
+    if (candidate.core_signature) {
+      if (!byCoreSignature.has(candidate.core_signature)) {
+        byCoreSignature.set(candidate.core_signature, []);
+      }
+      byCoreSignature.get(candidate.core_signature)!.push(candidate);
+    }
+
+    if (candidate.loose_signature) {
+      if (!byLooseSignature.has(candidate.loose_signature)) {
+        byLooseSignature.set(candidate.loose_signature, []);
+      }
+      byLooseSignature.get(candidate.loose_signature)!.push(candidate);
     }
   }
 
   const matches: ConsultantMatch[] = [];
-  const matchedNuffieldSlugs = new Set<string>();
   const matchedBupaIds = new Set<string>();
 
-  for (const candidate of candidates) {
-    // Skip if this BUPA profile already matched
-    if (matchedBupaIds.has(candidate.bupa_id)) continue;
+  for (const consultant of nuffieldConsultants) {
+    if (!consultant.normalized_name) continue;
+    const normalizedConsultantName = consultant.normalized_name;
 
-    // Try name-based matching from URL slug (the only signal available pre-scrape)
-    const normalizedBupaName = normalizeNameForMatching(candidate.name_from_url);
-
-    // Exact name match (medium confidence)
-    const exactMatches = byNormalizedName.get(normalizedBupaName) ?? [];
-    for (const nc of exactMatches) {
-      if (matchedNuffieldSlugs.has(nc.slug)) continue;
-
+    const exactCandidates = getAvailableCandidates(
+      byNormalizedName.get(normalizedConsultantName),
+      matchedBupaIds
+    );
+    if (exactCandidates.length === 1) {
       matches.push({
-        nuffield_slug: nc.slug,
-        bupa_id: candidate.bupa_id,
+        nuffield_slug: consultant.slug,
+        bupa_id: exactCandidates[0].bupa_id,
         match_method: "name_search",
         match_confidence: "medium",
-        registration_number: nc.registration_number,
+        registration_number: consultant.registration_number,
       });
-      matchedNuffieldSlugs.add(nc.slug);
-      matchedBupaIds.add(candidate.bupa_id);
-      break;
+      matchedBupaIds.add(exactCandidates[0].bupa_id);
+      continue;
     }
 
-    if (matchedBupaIds.has(candidate.bupa_id)) continue;
-
-    // Fuzzy name match (low confidence) — requires Levenshtein distance <= 2
-    for (const nc of nuffieldConsultants) {
-      if (matchedNuffieldSlugs.has(nc.slug)) continue;
-      if (!nc.consultant_name) continue;
-
-      const normalizedNuffield = normalizeNameForMatching(nc.consultant_name);
-      const distance = levenshteinDistance(normalizedBupaName, normalizedNuffield);
-
-      if (distance > 0 && distance <= 2) {
-        matches.push({
-          nuffield_slug: nc.slug,
-          bupa_id: candidate.bupa_id,
-          match_method: "name_search",
-          match_confidence: "low",
-          registration_number: nc.registration_number,
-        });
-        matchedNuffieldSlugs.add(nc.slug);
-        matchedBupaIds.add(candidate.bupa_id);
-        break;
-      }
+    const relaxedCandidates = getAvailableCandidates(
+      consultant.core_signature ? byCoreSignature.get(consultant.core_signature) : undefined,
+      matchedBupaIds
+    ).filter((candidate) =>
+      isLikelySameConsultantName(candidate.normalized_name, normalizedConsultantName)
+    );
+    if (relaxedCandidates.length === 1) {
+      matches.push({
+        nuffield_slug: consultant.slug,
+        bupa_id: relaxedCandidates[0].bupa_id,
+        match_method: "name_search",
+        match_confidence: "low",
+        registration_number: consultant.registration_number,
+      });
+      matchedBupaIds.add(relaxedCandidates[0].bupa_id);
+      continue;
     }
+
+    const fuzzyCandidates = getAvailableCandidates(
+      consultant.loose_signature ? byLooseSignature.get(consultant.loose_signature) : undefined,
+      matchedBupaIds
+    )
+      .map((candidate) => ({
+        candidate,
+        distance: levenshteinDistance(candidate.normalized_name, normalizedConsultantName),
+      }))
+      .filter((entry) => entry.distance > 0 && entry.distance <= 2)
+      .sort((left, right) => left.distance - right.distance);
+
+    if (fuzzyCandidates.length === 0) continue;
+
+    const bestDistance = fuzzyCandidates[0].distance;
+    const bestCandidates = fuzzyCandidates.filter((entry) => entry.distance === bestDistance);
+    if (bestCandidates.length !== 1) continue;
+
+    matches.push({
+      nuffield_slug: consultant.slug,
+      bupa_id: bestCandidates[0].candidate.bupa_id,
+      match_method: "name_search",
+      match_confidence: "low",
+      registration_number: consultant.registration_number,
+    });
+    matchedBupaIds.add(bestCandidates[0].candidate.bupa_id);
   }
 
   logger.info("BUPA_DISC", "match", "complete", `${matches.length} matches found`);
 
-  // Persist matches to database
+  if (persist) {
+    await persistConsultantMatches(matches, {
+      clearSlugs: nuffieldConsultants.map((consultant) => consultant.slug),
+    });
+  }
+
+  return matches;
+}
+
+export async function persistConsultantMatches(
+  matches: ConsultantMatch[],
+  options: PersistMatchOptions = {}
+): Promise<void> {
+  const clearSlugs = dedupeStrings(
+    options.clearSlugs ?? matches.map((match) => match.nuffield_slug)
+  );
+
+  await deleteExistingMatchesForSlugs(clearSlugs);
+
   for (const match of matches) {
     await db.insert(consultantMatches).values({
       match_id: randomUUID(),
@@ -165,8 +254,6 @@ export async function matchConsultants(
       matched_at: new Date().toISOString(),
     });
   }
-
-  return matches;
 }
 
 /**
@@ -180,30 +267,56 @@ export function normalizeNameForMatching(name: string): string {
   ];
 
   let normalized = name.toLowerCase().trim();
+  normalized = normalized.replace(/[_-]+/g, " ");
 
-  // Remove title prefixes
   for (const prefix of titlePrefixes) {
     const regex = new RegExp(`^${prefix}\\.?\\s+`, "i");
     normalized = normalized.replace(regex, "");
   }
 
-  // Normalize hyphens and apostrophes — remove them for comparison
   normalized = normalized.replace(/[-''\u2019]/g, "");
-
-  // Remove non-alpha characters except spaces
   normalized = normalized.replace(/[^a-z\s]/g, "");
-
-  // Collapse whitespace
   normalized = normalized.replace(/\s+/g, " ").trim();
 
   return normalized;
 }
 
-// ── Internal helpers ──────────────────────────────────────────────
+export function normalizeRegistrationNumber(value: string | null | undefined): string | null {
+  if (!value) return null;
+
+  const digitsOnly = value.replace(/\D/g, "");
+  if (!digitsOnly) return null;
+
+  return digitsOnly.replace(/^0+/, "") || "0";
+}
+
+export function isLikelySameConsultantName(left: string, right: string): boolean {
+  const normalizedLeft = normalizeNameForMatching(left);
+  const normalizedRight = normalizeNameForMatching(right);
+
+  if (normalizedLeft === normalizedRight) return true;
+
+  const leftTokens = tokenizeNormalizedName(normalizedLeft);
+  const rightTokens = tokenizeNormalizedName(normalizedRight);
+
+  if (leftTokens.length < 2 || rightTokens.length < 2) return false;
+  if (Math.abs(leftTokens.length - rightTokens.length) > 2) return false;
+  if (leftTokens[0] !== rightTokens[0]) return false;
+  if (leftTokens[leftTokens.length - 1] !== rightTokens[rightTokens.length - 1]) return false;
+
+  const [shorter, longer] =
+    leftTokens.length <= rightTokens.length
+      ? [leftTokens, rightTokens]
+      : [rightTokens, leftTokens];
+
+  return isTokenSubsequence(shorter, longer);
+}
+
+// Internal helpers
 
 async function fetchSitemapXml(url: string, isGzip: boolean): Promise<string> {
   const response = await fetch(url, {
-    // @ts-expect-error -- Node fetch supports rejectUnauthorized via agent
+    // @ts-expect-error Node fetch supports rejectUnauthorized via agent
     dispatcher: undefined,
     headers: { "User-Agent": "CambrianBot/1.0 (consultant-intelligence)" },
     signal: AbortSignal.timeout(30_000),
@@ -239,37 +352,84 @@ function extractConsultantCandidates(xml: string): BupaCandidate[] {
 
   for (const url of locUrls) {
     const match = url.match(CONSULTANT_URL_PATTERN);
-    if (match) {
-      const bupaId = match[1];
-      const nameSlug = match[2];
-      // Convert URL slug to readable name: "john-smith" -> "john smith"
-      const nameFromUrl = nameSlug.replace(/-/g, " ");
+    if (!match) continue;
 
-      candidates.push({
-        bupa_id: bupaId,
-        bupa_slug: nameSlug,
-        profile_url: url,
-        name_from_url: nameFromUrl,
-      });
-    }
+    const bupaId = match[1];
+    const nameSlug = match[2];
+    const nameFromUrl = nameSlug.replace(/[-_]/g, " ");
+
+    candidates.push({
+      bupa_id: bupaId,
+      bupa_slug: nameSlug,
+      profile_url: url,
+      name_from_url: nameFromUrl,
+    });
   }
 
   return candidates;
 }
 
-/**
- * Compute Levenshtein distance between two strings.
- */
+function tokenizeNormalizedName(normalizedName: string): string[] {
+  return normalizedName.split(" ").filter(Boolean);
+}
+
+function buildCoreNameSignature(normalizedName: string): string | null {
+  const tokens = tokenizeNormalizedName(normalizedName);
+  if (tokens.length < 2) return null;
+
+  return `${tokens[0]}:${tokens[tokens.length - 1]}`;
+}
+
+function buildLooseNameSignature(normalizedName: string): string | null {
+  const tokens = tokenizeNormalizedName(normalizedName);
+  if (tokens.length < 2) return null;
+
+  return `${tokens[0][0]}:${tokens[tokens.length - 1]}`;
+}
+
+function isTokenSubsequence(shorter: string[], longer: string[]): boolean {
+  let shorterIndex = 0;
+
+  for (const token of longer) {
+    if (token === shorter[shorterIndex]) {
+      shorterIndex++;
+      if (shorterIndex === shorter.length) return true;
+    }
+  }
+
+  return false;
+}
+
+function getAvailableCandidates(
+  candidates: MatchableBupaCandidate[] | undefined,
+  matchedBupaIds: Set<string>
+): MatchableBupaCandidate[] {
+  return (candidates ?? []).filter((candidate) => !matchedBupaIds.has(candidate.bupa_id));
+}
+
+async function deleteExistingMatchesForSlugs(slugs: string[]): Promise<void> {
+  if (slugs.length === 0) return;
+
+  for (let index = 0; index < slugs.length; index += MATCH_DELETE_CHUNK_SIZE) {
+    const chunk = slugs.slice(index, index + MATCH_DELETE_CHUNK_SIZE);
+    await db.delete(consultantMatches)
+      .where(inArray(consultantMatches.nuffield_slug, chunk))
+      .run();
+  }
+}
+
+function dedupeStrings(values: string[]): string[] {
+  return [...new Set(values.filter(Boolean))];
+}
+
 function levenshteinDistance(a: string, b: string): number {
   const m = a.length;
   const n = b.length;
 
-  // Early exit for identical strings or empty inputs
   if (a === b) return 0;
   if (m === 0) return n;
   if (n === 0) return m;
 
-  // Use single-row DP for memory efficiency
   let prev = Array.from({ length: n + 1 }, (_, i) => i);
   let curr = new Array<number>(n + 1);
 
@@ -278,9 +438,9 @@ function levenshteinDistance(a: string, b: string): number {
     for (let j = 1; j <= n; j++) {
       const cost = a[i - 1] === b[j - 1] ? 0 : 1;
       curr[j] = Math.min(
-        prev[j] + 1,      // deletion
-        curr[j - 1] + 1,  // insertion
-        prev[j - 1] + cost // substitution
+        prev[j] + 1,
+        curr[j - 1] + 1,
+        prev[j - 1] + cost
       );
     }
     [prev, curr] = [curr, prev];

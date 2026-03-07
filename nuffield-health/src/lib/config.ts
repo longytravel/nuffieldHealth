@@ -47,6 +47,14 @@ export const TIER_THRESHOLDS = {
   incomplete: { minScore: 0, mandatory: [] },
 } as const;
 
+// Points that BUPA profiles can never earn (no booking, insurers, consultation times, practising_since)
+export const BUPA_UNAVAILABLE_POINTS =
+  SCORE_WEIGHTS.booking_with_slots +    // 10
+  SCORE_WEIGHTS.insurers_non_empty +    // 8
+  SCORE_WEIGHTS.consultation_times_non_empty + // 7
+  SCORE_WEIGHTS.practising_since_non_null;     // 5
+// = 30
+
 // Specialties where missing treatments section is not penalised
 export const NON_PROCEDURAL_SPECIALTIES = [
   "Psychiatry",

@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { GlassCard } from "@/components/ui/glass-card";
 import { TierBadge } from "@/components/ui/tier-badge";
-import { Badge } from "@/components/ui/badge";
 import type { ScoreDimension } from "@/lib/types";
 import {
   FileText,
@@ -187,19 +186,21 @@ export function ProfileTabs({ consultant: c, scoreDimensions, specialtyAvg, bupa
   return (
     <div className="space-y-6">
       {/* Tab Bar */}
-      <div className="flex gap-1 rounded-xl bg-[var(--bg-secondary)] p-1 border border-[var(--border-subtle)] overflow-x-auto">
+      <div className="flex flex-wrap gap-2 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-secondary)] p-2">
         {tabs.map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-all ${
+            className={`shrink-0 whitespace-nowrap rounded-lg px-4 py-2.5 text-sm font-medium transition-all ${
               activeTab === tab.id
                 ? "bg-[var(--bg-elevated)] text-[var(--sensai-teal)] shadow-sm"
                 : "text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)]/50"
             }`}
           >
-            {tab.icon}
-            {tab.label}
+            <span className="inline-flex items-center gap-2">
+              {tab.icon}
+              {tab.label}
+            </span>
           </button>
         ))}
       </div>
@@ -252,9 +253,9 @@ function AiInsightsTab({
   const totalEarned = scoreDimensions.reduce((sum, d) => sum + d.earned, 0);
 
   return (
-    <div className="grid gap-6 lg:grid-cols-2">
+    <div className="grid gap-6 xl:grid-cols-2">
       {/* AI Recommendations */}
-      <GlassCard className="lg:col-span-2">
+      <GlassCard className="xl:col-span-2">
         <h3 className="text-h3 text-[var(--text-primary)] mb-4">AI Recommendations</h3>
         <div className="space-y-3">
           {(() => {
@@ -428,10 +429,10 @@ function SectionHeading({
 // ========== Overview Tab ==========
 function OverviewTab({ consultant: c }: { consultant: ProfileTabsProps["consultant"] }) {
   return (
-    <div className="grid gap-6 lg:grid-cols-2">
+    <div className="grid gap-6 xl:grid-cols-2">
       {/* Biography */}
       {c.about_text && (
-        <GlassCard className="lg:col-span-2">
+        <GlassCard className="xl:col-span-2">
           <SectionHeading
             label="Biography"
             editSlug={c.slug}
@@ -600,7 +601,7 @@ function OverviewTab({ consultant: c }: { consultant: ProfileTabsProps["consulta
 
       {/* Declaration */}
       {c.declaration && c.declaration.length > 0 && (
-        <GlassCard className="lg:col-span-2">
+        <GlassCard className="xl:col-span-2">
           <h3 className="text-h3 text-[var(--text-primary)] mb-3">
             Declaration
             {c.declaration_substantive && (
@@ -632,9 +633,9 @@ function QualityTab({
   const totalEarned = scoreDimensions.reduce((sum, d) => sum + d.earned, 0);
 
   return (
-    <div className="grid gap-6 lg:grid-cols-2">
+    <div className="grid gap-6 xl:grid-cols-2">
       {/* Score Breakdown */}
-      <GlassCard className="lg:col-span-2">
+      <GlassCard className="xl:col-span-2">
         <div className="flex items-center justify-between mb-6">
           <h3 className="text-h3 text-[var(--text-primary)]">Score Breakdown</h3>
           <div className="flex items-center gap-3">
@@ -697,7 +698,7 @@ function QualityTab({
 
       {/* Flags */}
       {c.flags.length > 0 && (
-        <GlassCard className="lg:col-span-2">
+        <GlassCard className="xl:col-span-2">
           <h3 className="text-h3 text-[var(--text-primary)] mb-4">
             Flags ({c.flags.length})
           </h3>
@@ -735,10 +736,10 @@ function BookingTab({ consultant: c }: { consultant: ProfileTabsProps["consultan
   ];
 
   return (
-    <div className="grid gap-6 lg:grid-cols-2">
-      <GlassCard className="lg:col-span-2">
+    <div className="grid gap-6 xl:grid-cols-2">
+      <GlassCard className="xl:col-span-2">
         <h3 className="text-h3 text-[var(--text-primary)] mb-4">Booking Information</h3>
-        <div className="grid grid-cols-2 gap-x-8 gap-y-4">
+        <div className="grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2">
           {bookingFields.map((field) => (
             <div key={field.label}>
               <p className="text-xs text-[var(--text-muted)] mb-0.5">{field.label}</p>
@@ -819,9 +820,9 @@ function CompetitorTab({ comparison }: { comparison: ConsultantComparison | null
   const nuffieldWins = scoreDelta < -2;
 
   return (
-    <div className="grid gap-6 lg:grid-cols-2">
+    <div className="grid gap-6 xl:grid-cols-2">
       {/* Score Comparison */}
-      <GlassCard className="lg:col-span-2">
+      <GlassCard className="xl:col-span-2">
         <div className="flex items-center justify-between mb-6">
           <h3 className="text-h3 text-[var(--text-primary)]">Score Comparison</h3>
           {comparison.match_confidence && (
@@ -837,7 +838,7 @@ function CompetitorTab({ comparison }: { comparison: ConsultantComparison | null
           )}
         </div>
 
-        <div className="grid grid-cols-3 gap-4 text-center mb-6">
+        <div className="mb-6 grid grid-cols-1 gap-4 text-center sm:grid-cols-3">
           <div className="rounded-lg bg-[var(--bg-secondary)] p-4">
             <p className="text-xs text-[var(--text-muted)] mb-1">Nuffield (adjusted)</p>
             <p className="text-2xl font-bold font-mono text-[var(--sensai-teal)]">
@@ -892,7 +893,7 @@ function CompetitorTab({ comparison }: { comparison: ConsultantComparison | null
 
       {/* Dimension-by-Dimension Comparison */}
       {comparison.dimensions.length > 0 && (
-        <GlassCard className="lg:col-span-2">
+        <GlassCard className="xl:col-span-2">
           <h3 className="text-h3 text-[var(--text-primary)] mb-4">Field-by-Field Comparison</h3>
           <div className="space-y-2">
             {comparison.dimensions.map((dim) => (
@@ -915,19 +916,19 @@ function DimensionRow({ dim }: { dim: DimensionComparison }) {
   ) : null;
 
   return (
-    <div className="flex items-center gap-3 rounded-lg bg-[var(--bg-secondary)] px-4 py-3">
+    <div className="flex flex-col gap-3 rounded-lg bg-[var(--bg-secondary)] px-4 py-3 sm:flex-row sm:items-center">
       <div className="w-5 shrink-0">{winnerIcon}</div>
-      <div className="flex-1 min-w-0">
+      <div className="min-w-0 flex-1">
         <span className="text-sm font-medium text-[var(--text-primary)]">{dim.label}</span>
       </div>
-      <div className="flex items-center gap-6 text-sm">
-        <div className="text-right w-24">
+      <div className="flex w-full items-center justify-between gap-4 text-sm sm:w-auto sm:justify-normal sm:gap-6">
+        <div className="w-auto text-right sm:w-24">
           <span className="text-xs text-[var(--text-muted)] block">Nuffield</span>
           <span className={`font-mono ${dim.winner === "nuffield" ? "text-[var(--success)]" : "text-[var(--text-secondary)]"}`}>
             {formatDimensionValue(dim.nuffield_value)}
           </span>
         </div>
-        <div className="text-right w-24">
+        <div className="w-auto text-right sm:w-24">
           <span className="text-xs text-[var(--text-muted)] block">BUPA</span>
           <span className={`font-mono ${dim.winner === "bupa" ? "text-[var(--warning)]" : "text-[var(--text-secondary)]"}`}>
             {formatDimensionValue(dim.bupa_value)}
@@ -952,7 +953,7 @@ function RawDataTab({ consultant: c }: { consultant: ProfileTabsProps["consultan
       {/* Metadata */}
       <GlassCard>
         <h3 className="text-h3 text-[var(--text-primary)] mb-4">Metadata</h3>
-        <div className="grid grid-cols-2 gap-x-8 gap-y-3">
+        <div className="grid grid-cols-1 gap-x-8 gap-y-3 sm:grid-cols-2">
           <MetaItem label="Slug" value={c.slug} />
           <MetaItem label="Registration Number" value={c.registration_number} />
           <MetaItem label="Profile Status" value={c.profile_status} />

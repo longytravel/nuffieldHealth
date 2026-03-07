@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { getLatestRun, getConsultant, getSpecialtyAverageScore } from "@/db/queries";
-import { getLatestBupaRun, getConsultantComparison } from "@/db/bupa-queries";
+import { getLatestBupaRun, getBupaRunById, getConsultantComparison } from "@/db/bupa-queries";
 import { GlassCard } from "@/components/ui/glass-card";
 import { TierBadge } from "@/components/ui/tier-badge";
 import { ScoreGauge } from "@/components/ui/score-gauge";
@@ -20,6 +20,7 @@ import {
 
 interface PageProps {
   params: Promise<{ slug: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
 
 function formatRegistrationNumber(regNum: string | null): { label: string; value: string } | null {
@@ -33,8 +34,18 @@ function formatRegistrationNumber(regNum: string | null): { label: string; value
   return { label: "Registration Number", value: regNum };
 }
 
-export default async function ConsultantDetailPage({ params }: PageProps) {
+function str(
+  params: Record<string, string | string[] | undefined>,
+  key: string
+): string | undefined {
+  const value = params[key];
+  return typeof value === "string" ? value : undefined;
+}
+
+export default async function ConsultantDetailPage({ params, searchParams }: PageProps) {
   const { slug } = await params;
+  const query = await searchParams;
+  const requestedBupaRunId = str(query, "bupaRunId");
   const run = await getLatestRun();
 
   if (!run) {
@@ -55,7 +66,7 @@ export default async function ConsultantDetailPage({ params }: PageProps) {
   const primarySpecialty = c.specialty_primary.length > 0 ? c.specialty_primary[0] : null;
   const [specialtyAvg, bupaRun] = await Promise.all([
     primarySpecialty ? getSpecialtyAverageScore(run.run_id, primarySpecialty) : null,
-    getLatestBupaRun(),
+    requestedBupaRunId ? getBupaRunById(requestedBupaRunId) : getLatestBupaRun(true),
   ]);
 
   // Get BUPA comparison if a BUPA run exists
@@ -95,9 +106,9 @@ export default async function ConsultantDetailPage({ params }: PageProps) {
       </nav>
 
       {/* Hero Section */}
-      <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+      <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
         {/* Left: Photo + Info */}
-        <div className="flex items-start gap-5">
+        <div className="flex min-w-0 flex-1 items-start gap-5">
           {/* Photo placeholder */}
           <div className={`h-20 w-20 shrink-0 rounded-2xl flex items-center justify-center text-2xl font-bold ${
             c.has_photo
@@ -106,8 +117,8 @@ export default async function ConsultantDetailPage({ params }: PageProps) {
           }`}>
             {(c.consultant_name ?? c.slug).charAt(0).toUpperCase()}
           </div>
-          <div>
-            <h1 className="text-h1 text-[var(--text-primary)]">
+          <div className="min-w-0">
+            <h1 className="break-words text-h1 text-[var(--text-primary)]">
               {c.consultant_title_prefix && !c.consultant_name?.startsWith(c.consultant_title_prefix)
                 ? `${c.consultant_title_prefix} `
                 : ""}
@@ -161,7 +172,7 @@ export default async function ConsultantDetailPage({ params }: PageProps) {
       </div>
 
       {/* Stat Cards */}
-      <div className="grid gap-4 grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {/* Tier Card */}
         <GlassCard className="flex flex-col items-center justify-center py-6">
           <p className="text-caption text-[var(--text-muted)] mb-2">Quality Tier</p>

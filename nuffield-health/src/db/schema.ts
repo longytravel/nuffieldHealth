@@ -1,5 +1,7 @@
 import { sqliteTable, text, integer, real, primaryKey, index } from "drizzle-orm/sqlite-core";
 
+type JsonSectionMap = Record<string, { heading: string; values: string[] }>;
+
 // Scrape runs table — one row per pipeline execution
 export const scrapeRuns = sqliteTable("scrape_runs", {
   run_id: text("run_id").primaryKey(),
@@ -221,6 +223,12 @@ export const bupaConsultants = sqliteTable(
     languages: text("languages", { mode: "json" }).$type<string[]>().notNull().default([]),
     hospital_affiliations: text("hospital_affiliations", { mode: "json" }).$type<string[]>().notNull().default([]),
     fee_assured: integer("fee_assured", { mode: "boolean" }),
+    contact_phone_numbers: text("contact_phone_numbers", { mode: "json" }).$type<string[]>().notNull().default([]),
+    contact_email_addresses: text("contact_email_addresses", { mode: "json" }).$type<string[]>().notNull().default([]),
+    website_urls: text("website_urls", { mode: "json" }).$type<string[]>().notNull().default([]),
+    accreditation_badges: text("accreditation_badges", { mode: "json" }).$type<string[]>().notNull().default([]),
+    source_sections: text("source_sections", { mode: "json" }).$type<JsonSectionMap>().notNull().default({}),
+    unmapped_section_keys: text("unmapped_section_keys", { mode: "json" }).$type<string[]>().notNull().default([]),
 
     // AI Assessment (same fields as Nuffield)
     plain_english_score: integer("plain_english_score"),

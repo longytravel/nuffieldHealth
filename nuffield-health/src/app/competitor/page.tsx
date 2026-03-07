@@ -2,7 +2,6 @@ export const dynamic = "force-dynamic";
 
 import {
   Swords,
-  Users,
   TrendingUp,
   TrendingDown,
   Equal,
@@ -20,6 +19,7 @@ import Link from "next/link";
 import { getLatestRun } from "@/db/queries";
 import {
   getLatestBupaRun,
+  getBupaRunById,
   getAggregateComparison,
   getTopGaps,
 } from "@/db/bupa-queries";
@@ -29,7 +29,7 @@ import { TierBadge } from "@/components/ui/tier-badge";
 import type { QualityTier } from "@/lib/types";
 
 function formatPct(n: number): string {
-  return n.toFixed(1) + "%";
+  return (n * 100).toFixed(1) + "%";
 }
 
 function formatScore(n: number | null): string {
@@ -49,10 +49,25 @@ const DIMENSION_ICONS: Record<string, React.ReactNode> = {
   memberships: <Award className="h-4 w-4" />,
 };
 
-export default async function CompetitorPage() {
+interface PageProps {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}
+
+function str(
+  params: Record<string, string | string[] | undefined>,
+  key: string
+): string | undefined {
+  const v = params[key];
+  return typeof v === "string" ? v : undefined;
+}
+
+export default async function CompetitorPage({ searchParams }: PageProps) {
+  const params = await searchParams;
+  const requestedBupaRunId = str(params, "bupaRunId");
+
   const [nuffieldRun, bupaRun] = await Promise.all([
     getLatestRun(),
-    getLatestBupaRun(),
+    requestedBupaRunId ? getBupaRunById(requestedBupaRunId) : getLatestBupaRun(true),
   ]);
 
   if (!nuffieldRun || !bupaRun) {
@@ -88,6 +103,11 @@ export default async function CompetitorPage() {
   const totalCompared = comparison.bupa_better_count + comparison.nuffield_better_count + comparison.tie_count;
   const bupaBetterPct = totalCompared > 0 ? (comparison.bupa_better_count / totalCompared) * 100 : 0;
   const nuffieldBetterPct = totalCompared > 0 ? (comparison.nuffield_better_count / totalCompared) * 100 : 0;
+  const profileHref = (slug: string) =>
+    requestedBupaRunId ? `/consultants/${slug}?bupaRunId=${encodeURIComponent(bupaRun.run_id)}` : `/consultants/${slug}`;
+  const runLabel = bupaRun.run_id.startsWith("pilot-")
+    ? `Pilot run: ${comparison.matched_count}/${comparison.total_nuffield} surfaced consultants`
+    : `${comparison.matched_count} matched consultants`;
 
   return (
     <div className="space-y-8">
@@ -95,8 +115,13 @@ export default async function CompetitorPage() {
       <div>
         <h1 className="text-h1 text-[var(--text-primary)]">Competitive Intelligence</h1>
         <p className="text-body text-[var(--text-secondary)] mt-1">
-          BUPA vs Nuffield profile comparison &mdash; {comparison.matched_count} matched consultants
+          BUPA vs Nuffield profile comparison &mdash; {runLabel}
         </p>
+        {requestedBupaRunId && (
+          <p className="mt-2 text-xs font-mono text-[var(--text-muted)]">
+            run_id={bupaRun.run_id}
+          </p>
+        )}
       </div>
 
       {/* KPI Cards */}
@@ -291,7 +316,7 @@ export default async function CompetitorPage() {
                   <tr key={gap.nuffield_slug} className="border-b border-[var(--border-subtle)]/50 hover:bg-[var(--bg-elevated)]/30">
                     <td className="py-3">
                       <Link
-                        href={`/consultants/${gap.nuffield_slug}`}
+                        href={profileHref(gap.nuffield_slug)}
                         className="font-medium text-[var(--text-primary)] hover:text-[var(--sensai-teal)] transition-colors"
                       >
                         {gap.consultant_name ?? gap.nuffield_slug}
@@ -315,7 +340,7 @@ export default async function CompetitorPage() {
                     <td className="py-3 text-right">
                       <div className="flex items-center justify-end gap-2">
                         <Link
-                          href={`/consultants/${gap.nuffield_slug}`}
+                          href={profileHref(gap.nuffield_slug)}
                           className="text-xs text-[var(--sensai-teal)] hover:underline"
                         >
                           Profile

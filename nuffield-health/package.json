@@ -8,7 +8,13 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "db:ensure-bupa-schema": "node scripts/ensure-bupa-schema.mjs",
+    "db:reset-bupa-data": "node scripts/reset-bupa-data.mjs",
+    "bupa:pilot": "pnpm tsx scripts/bupa-pilot.ts",
+    "bupa:audit-pilot": "pnpm tsx scripts/audit-bupa-pilot.ts",
+    "bupa:reparse-run": "pnpm tsx scripts/reparse-bupa-run.ts",
+    "bupa:test:turso": "pnpm db:ensure-bupa-schema && pnpm tsx src/scraper/bupa/run-bupa.ts --skip-assess --limit 201"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
